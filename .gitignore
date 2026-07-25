@@ -1,0 +1,33 @@
+# SQLite Database
+*.db
+sentinel_ai.db
+
+# Python Caches & Environments
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# EnergyPlus Outputs & Logs
+ep_output/
+test_out/
+eplusout.*
+*.eso
+*.err
+*.eio
+*.audit
+*.bnd
+*.dxf
+*.rvi
+*.mvi
+*.mtd
+*.shd
+*.end
+
+# OS & Temp
+.DS_Store
+Thumbs.db
+xtra

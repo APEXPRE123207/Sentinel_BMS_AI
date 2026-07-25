@@ -1,0 +1,26 @@
+# SentinelAI - Autonomous Building Intelligence Platform Dependencies
+# Core Backend & Async Server
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+pydantic>=2.0.0
+
+# Testing & Quality
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Data Analysis & Metrics Logging
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization & Dashboard (Plotly + Streamlit / React Backend)
+plotly>=5.15.0
+streamlit>=1.25.0
+
+# HTTP & MCP Tool Client
+httpx>=0.24.0
+requests>=2.31.0
+
+# EnergyPlus Python API Integration Note:
+# EnergyPlus Python API ('pyenergyplus') is installed automatically when EnergyPlus is installed on your system.
+# Its python path is typically located inside the EnergyPlus installation directory:
+# e.g., C:\EnergyPlusV23-2-0\python or set via PYTHONPATH.
