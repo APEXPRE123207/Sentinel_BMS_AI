@@ -230,14 +230,49 @@ class DatabaseManager:
             ))
             conn.commit()
 
+    def log_equipment_health_report(self, report):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            ahu = report.assets.get("AHU")
+            pump = report.assets.get("PUMP")
+            fan = report.assets.get("FAN")
+            chiller = report.assets.get("CHILLER")
+
+            cursor.execute("""
+                INSERT INTO EquipmentHealth (
+                    timestamp, timestep, ahu_health, pump_health, fan_health, chiller_health,
+                    ahu_status, pump_status, fan_status, chiller_status,
+                    total_power_kw, cumulative_runtime_hours, cycling_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                report.timestamp, report.timestep,
+                ahu.health_score if ahu else 98.0,
+                pump.health_score if pump else 78.0,
+                fan.health_score if fan else 95.0,
+                chiller.health_score if chiller else 92.0,
+                ahu.status if ahu else "NORMAL",
+                pump.status if pump else "NORMAL",
+                fan.status if fan else "NORMAL",
+                chiller.status if chiller else "NORMAL",
+                0.0, 0.0, 0
+            ))
+            conn.commit()
+
+    def get_latest_equipment_health(self) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM EquipmentHealth ORDER BY id DESC LIMIT 1;")
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
     def get_latest_baseline_metrics(self, timestep: int) -> Optional[Dict[str, Any]]:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            # Try exact timestep first, then fallback to closest recorded timestep
             cursor.execute("SELECT * FROM BaselineMetrics WHERE timestep = ? ORDER BY id DESC LIMIT 1;", (timestep,))
             row = cursor.fetchone()
             if not row:
                 cursor.execute("SELECT * FROM BaselineMetrics ORDER BY ABS(timestep - ?) ASC LIMIT 1;", (timestep,))
                 row = cursor.fetchone()
             return dict(row) if row else None
+
 

@@ -15,6 +15,7 @@ from .state.context_builder import RollingContextBuilder
 from .agents.council import AgentCouncil
 from .validator.safety_validator import SafetyValidator
 from .controller.forward_controller import ForwardController
+from .health_engine.engine import EquipmentHealthEngine
 from .energyplus.runner import SimulationEngine, EnergyPlusRunner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -35,6 +36,7 @@ class SentinelAIControlLoop:
         self.context_builder = RollingContextBuilder(window_size=10)
         self.agent_council = AgentCouncil(api_url=llm_api_url)
         self.validator = SafetyValidator()
+        self.health_engine = EquipmentHealthEngine()
         self.max_retries = max_retries
         self.use_energyplus = use_energyplus
 
@@ -70,6 +72,10 @@ class SentinelAIControlLoop:
             total_energy_kwh=sim_data["total_energy_kwh"],
             carbon_emissions_kg=sim_data["carbon_emissions_kg"]
         )
+
+        # Step 2.5: Evaluate Equipment Health Engine
+        health_report = self.health_engine.evaluate_state(building_state)
+        self.db_manager.log_equipment_health_report(health_report)
 
         # Step 3: Rolling Context Builder
         self.context_builder.add_state(building_state)
@@ -122,12 +128,14 @@ class SentinelAIControlLoop:
 
         logger.info(
             f"Timestep {building_state.timestep} Completed | Outdoor: {building_state.outdoor_temp}°C | "
-            f"Energy: {building_state.total_energy_kwh} kWh | Validated: {val_result.is_valid} | Fallback: {val_result.used_fallback}"
+            f"Energy: {building_state.total_energy_kwh} kWh | Health: {health_report.overall_health_score}% | "
+            f"Validated: {val_result.is_valid} | Fallback: {val_result.used_fallback}"
         )
 
         return {
             "timestep": building_state.timestep,
             "building_state": building_state,
+            "health_report": health_report,
             "council_decision": council_decision,
             "validation_result": val_result,
             "actuation_result": actuation_result

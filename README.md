@@ -25,7 +25,7 @@ SentinelAI transforms conventional static-schedule Building Management Systems i
 | **Phase 1** | **Core Control Loop & Real EnergyPlus Integration** | ✅ **Completed** |
 | **Phase 2** | **Modular 9-Rule Safety Engine & LKG Serialization** | ✅ **Completed** |
 | **Phase 3** | **Baseline Comparison Framework & Dual Simulation** | ✅ **Completed** |
-| **Phase 4** | **Equipment Health Engine (Stress, RUL, Anomaly)** | 📋 Planned |
+| **Phase 4** | **Equipment Health Engine (Stress, RUL, Anomaly)** | ✅ **Completed** |
 | **Phase 5** | **Live Analytics & Decision Dashboard (FastAPI + Plotly)** | 📋 Planned |
 | **Phase 6** | **Interactive 2D/3D Digital Twin Visualizer** | 📋 Planned |
 | **Phase 7** | **Demo Scenario, Video & Presentation** | 📋 Planned |
