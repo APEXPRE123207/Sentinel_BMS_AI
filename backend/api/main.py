@@ -178,7 +178,10 @@ def get_latest_health():
             "active_alerts": [a.__dict__ for a in report.active_alerts]
         }
     
-    health_data = db_manager.get_latest_equipment_health()
+    try:
+        health_data = db_manager.get_latest_equipment_health()
+    except Exception:
+        health_data = None
     if not health_data:
         return {
             "overall_health_score": 91.3,
@@ -210,35 +213,40 @@ def get_latest_health():
 @app.get("/api/comparison/latest")
 def get_latest_comparison():
     """Returns the latest empirical Baseline vs SentinelAI comparison metrics."""
-    with db_manager.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM AISimulationMetrics ORDER BY id DESC LIMIT 1;")
-        ai_row = cursor.fetchone()
-        
-        if not ai_row:
-            return {
-                "energy_saved_pct": 0.0,
-                "carbon_reduced_pct": 0.0,
-                "comfort_improvement": 0.0,
-                "baseline_energy_kwh": 0.0,
-                "ai_energy_kwh": 0.0,
-                "baseline_pmv": 0.0,
-                "ai_pmv": 0.0
-            }
-        
-        ai_d = dict(ai_row)
-        b_d = db_manager.get_latest_baseline_metrics(ai_d["timestep"]) or {}
+    default_result = {
+        "energy_saved_pct": 0.0,
+        "carbon_reduced_pct": 0.0,
+        "comfort_improvement": 0.0,
+        "baseline_energy_kwh": 0.0,
+        "ai_energy_kwh": 0.0,
+        "baseline_pmv": 0.0,
+        "ai_pmv": 0.0
+    }
+    try:
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM AISimulationMetrics ORDER BY id DESC LIMIT 1;")
+            ai_row = cursor.fetchone()
+            
+            if not ai_row:
+                return default_result
+            
+            ai_d = dict(ai_row)
+            b_d = db_manager.get_latest_baseline_metrics(ai_d["timestep"]) or {}
 
-        return {
-            "timestep": ai_d["timestep"],
-            "energy_saved_pct": ai_d.get("energy_saved_pct", 0.0),
-            "carbon_reduced_pct": ai_d.get("carbon_reduced_pct", 0.0),
-            "comfort_improvement": 1.437,
-            "baseline_energy_kwh": b_d.get("total_energy_kwh", ai_d["total_energy_kwh"]),
-            "ai_energy_kwh": ai_d["total_energy_kwh"],
-            "baseline_pmv": b_d.get("avg_pmv", -2.55),
-            "ai_pmv": ai_d.get("avg_pmv", -1.11)
-        }
+            return {
+                "timestep": ai_d["timestep"],
+                "energy_saved_pct": ai_d.get("energy_saved_pct", 0.0),
+                "carbon_reduced_pct": ai_d.get("carbon_reduced_pct", 0.0),
+                "comfort_improvement": 1.437,
+                "baseline_energy_kwh": b_d.get("total_energy_kwh", ai_d["total_energy_kwh"]),
+                "ai_energy_kwh": ai_d["total_energy_kwh"],
+                "baseline_pmv": b_d.get("avg_pmv", -2.55),
+                "ai_pmv": ai_d.get("avg_pmv", -1.11)
+            }
+    except Exception as e:
+        logger.warning(f"Comparison query failed: {e}")
+        return default_result
 
 baseline_runner = None
 @app.post("/api/control/step")

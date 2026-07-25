@@ -15,6 +15,8 @@ SentinelAI transforms conventional static-schedule Building Management Systems i
 - 📈 **Rolling Context Builder**: Summarizes a 10-step rolling window of building trends for lightweight, high-performance LLM prompting.
 - 🔬 **Baseline Comparison Framework**: Dual simulation runner (`baseline.idf` vs `sentinel.idf`) providing real empirical measurement of Energy Saved (%), Carbon Reduced (%), Comfort Improvement, and Stress Reduction.
 - 🔌 **Real EnergyPlus Integration**: Connects directly to `pyenergyplus.api` (EnergyPlus C-API & Python API) with zero data synthesis.
+- 🏗️ **Interactive Digital Twin**: Hybrid SVG + Three.js building visualizer with room heatmaps, equipment health overlays, and click-to-inspect room telemetry.
+- ☁️ **Multi-Provider Cloud LLM**: Routes AI reasoning through Ollama Cloud, Google Gemini, or local Ollama with automatic fallback to a deterministic council.
 
 ---
 
@@ -27,8 +29,7 @@ SentinelAI transforms conventional static-schedule Building Management Systems i
 | **Phase 3** | **Baseline Comparison Framework & Dual Simulation** | ✅ **Completed** |
 | **Phase 4** | **Equipment Health Engine (Stress, RUL, Anomaly)** | ✅ **Completed** |
 | **Phase 5** | **Live Analytics & Decision Dashboard (FastAPI + Plotly)** | ✅ **Completed** |
-| **Phase 6** | **Interactive 2D/3D Digital Twin Visualizer** | 📋 Planned |
-| **Phase 6** | **Interactive 2D/3D Digital Twin Visualizer** | 📋 Planned |
+| **Phase 6** | **Interactive Digital Twin, Cloud LLM & Critical Fixes** | ✅ **Completed** |
 | **Phase 7** | **Demo Scenario, Video & Presentation** | 📋 Planned |
 
 ---
@@ -90,7 +91,7 @@ Sentinel_BMS_AI/
 │   ├── mcp/
 │   │   └── tools.py              # MCP sensor & actuator tool definitions
 │   ├── agents/
-│   │   └── council.py            # Single-call Agent Council (Energy, Comfort, Carbon, Health)
+│   │   └── council.py            # Agent Council (multi-provider LLM + deterministic fallback)
 │   ├── validator/
 │   │   ├── rules.py              # 9 modular safety rules across 4 categories
 │   │   └── safety_validator.py   # Safety Validator + Feedback Generator + LKG Serialization
@@ -100,16 +101,31 @@ Sentinel_BMS_AI/
 │   │   └── comparator.py         # Empirical baseline vs AI comparison math
 │   ├── energyplus/
 │   │   └── runner.py             # Real pyenergyplus.api background runner & physics engine
+│   ├── health_engine/
+│   │   ├── engine.py             # Equipment Health Engine (stress, RUL, anomaly, alerts)
+│   │   └── models.py             # Health Engine data models
 │   ├── building/
+│   │   ├── small_office.idf      # Primary EnergyPlus building model
 │   │   ├── baseline.idf          # Baseline building model (static schedule)
 │   │   ├── sentinel.idf          # SentinelAI building model (dynamic actuation)
+│   │   ├── weather.epw           # Chicago TMY weather file
 │   │   ├── baseline_runner.py    # Baseline EnergyPlus runner
 │   │   └── dual_runner.py        # Side-by-side Dual Simulation runner
+│   ├── api/
+│   │   └── main.py               # FastAPI REST API & dashboard server
+│   ├── dashboard/
+│   │   ├── index.html            # BMS Web Control Dashboard
+│   │   └── static/
+│   │       ├── app.js            # Dashboard logic & Plotly.js charts
+│   │       ├── digital_twin.js   # Interactive Digital Twin (SVG + Three.js)
+│   │       └── styles.css        # Premium dark design system
 │   └── run_loop.py               # Autonomous closed-loop orchestrator
 ├── tests/
 │   ├── test_closed_loop.py       # Integration tests
 │   ├── test_safety_rules.py      # 33 safety rule tests
-│   └── test_baseline_comparison.py # Baseline comparison tests
+│   ├── test_baseline_comparison.py # Baseline comparison tests
+│   └── test_dashboard_api.py     # Dashboard API endpoint tests
+├── .env                          # API keys (gitignored)
 ├── PHASES.md                     # Master project roadmap & context reference
 ├── Project_plan.md               # Original project blueprint & v2.0 specs
 ├── requirements.txt              # Project dependencies

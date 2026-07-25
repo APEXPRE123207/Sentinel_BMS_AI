@@ -33,7 +33,7 @@ Phase 4: Equipment Health Engine [COMPLETED]
 Phase 5: Live Dashboard & Analytics UI [COMPLETED]
    │
    ▼
-Phase 6: Interactive Digital Twin [PLANNED]
+Phase 6: Interactive Digital Twin, Cloud LLM & Critical Fixes [COMPLETED]
    │
    ▼
 Phase 7: Presentation, Demo Scenario & Polish [PLANNED]
@@ -144,17 +144,21 @@ Phase 7: Presentation, Demo Scenario & Polish [PLANNED]
 
 ---
 
-### Phase 6: Interactive Digital Twin
-**Status**: 📋 **PLANNED**
+### Phase 6: Interactive Digital Twin, Cloud LLM & Critical Fixes
+**Status**: ✅ **COMPLETED**
 
-#### Objectives:
-- Build interactive building visualization (SVG / 2D / Three.js):
-  - **Room Heatmap View**: Click room (Office, Conference Room, Lobby) to view live temp, humidity, occupancy, PMV, and current AI decision.
-  - **Equipment Health Overlay**: Visual status indicators for AHU (🟢), Pump (🟡), Fan (🔴), Chiller (🟢).
-  - **Timeline Playback**: Step-by-step playback of building events (e.g. 09:10 Occupancy ↑ → Temp ↑ → Pump degradation → AI action → Comfort restored).
-
-#### Target Files:
-- `frontend/src/components/DigitalTwin.jsx` or Streamlit custom visualizer.
+#### Key Deliverables & Files Built:
+- **Interactive Digital Twin (Hybrid SVG + Three.js)**:
+  - [`backend/dashboard/static/digital_twin.js`](file:///w:/CODE/Honeywell/backend/dashboard/static/digital_twin.js): Dual-renderer digital twin visualization — SVG safety-net renderer + Three.js orthographic scene with `MeshBasicMaterial` (no lighting), `OrthographicCamera` (fixed isometric, no orbit), `BoxGeometry` rooms only. Equipment health dots are HTML overlays projected from 3D coordinates. Raycaster-based click interaction for room selection.
+- **Cloud LLM Integration**:
+  - [`backend/agents/council.py`](file:///w:/CODE/Honeywell/backend/agents/council.py): Multi-provider LLM routing — Ollama Cloud API (`OLLAMA_API_KEY` → `ollama.com/api/chat`), Google Gemini API (`LLM_API_KEY`), or local Ollama fallback (`LLM_API_KEY=0`). Includes deterministic fallback council for offline execution.
+- **EnergyPlus Fixes**:
+  - All 3 IDF files (`small_office.idf`, `baseline.idf`, `sentinel.idf`): Added `Zone People Occupant Count`, `Site Outdoor Air Drybulb Temperature`, `Site Outdoor Air Relative Humidity` output variables. Updated occupancy counts (Office=8, Conference=15, Lobby=2). Swapped RunPeriod to July 7 (summer) for meaningful cooling loads.
+  - [`backend/energyplus/runner.py`](file:///w:/CODE/Honeywell/backend/energyplus/runner.py): Fixed thread synchronization race condition in `step()`. Switched weather reading from unreliable `today_weather_*` API to standard output variables.
+- **API & Infrastructure Fixes**:
+  - [`backend/api/main.py`](file:///w:/CODE/Honeywell/backend/api/main.py): Fixed Reset DB (`initialize_tables` → `_init_db`). Added crash protection (`try/except`) to `/api/comparison/latest` and `/api/health/latest` endpoints.
+  - [`backend/analytics/comparator.py`](file:///w:/CODE/Honeywell/backend/analytics/comparator.py): Fixed operator precedence bug in `ai_stress` calculation.
+  - [`.gitignore`](file:///w:/CODE/Honeywell/.gitignore): Added `.env` and `api_key` to prevent secret leakage.
 
 ---
 
@@ -195,4 +199,7 @@ python -m pytest tests/test_closed_loop.py -v
 
 # Run 10-Step Autonomous Control Loop
 python -m backend.run_loop
+
+# Launch Dashboard & API Server (Phase 5+6)
+python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```

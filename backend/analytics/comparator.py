@@ -37,7 +37,7 @@ class BaselineComparator:
         ai_energy = ai_state.total_energy_kwh
         ai_carbon = ai_state.carbon_emissions_kg
         ai_power = ai_state.telemetry.total_power_kw if ai_state.telemetry else 0.0
-        ai_stress = ai_power * (1.0 + (ai_state.telemetry.cycling_count * 0.05) if ai_state.telemetry else 1.0)
+        ai_stress = ai_power * (1.0 + (ai_state.telemetry.cycling_count * 0.05 if ai_state.telemetry else 0.0))
 
         if baseline_data:
             b_energy = baseline_data.get("total_energy_kwh", 0.0)
