@@ -10,7 +10,7 @@ import time
 import logging
 from typing import Dict, Any, Optional
 from ..database.db import DatabaseManager
-from ..energyplus.runner import EnergyPlusRunner, SimulationEngine
+from ..energyplus.runner import EnergyPlusRunner
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,9 @@ class BaselineSimulationRunner:
         if use_energyplus and os.path.exists(idf_path) and os.path.exists(epw_path):
             self.runner = EnergyPlusRunner(idf_path=idf_path, epw_path=epw_path)
             self.runner.start()
+            logger.info(f"Baseline initialized with real EnergyPlus ({idf_path})")
         else:
-            self.runner = SimulationEngine()
+            raise NotImplementedError("The mock physics engine has been removed. You must use use_energyplus=True and provide valid idf/epw paths.")
 
     def run_step(self) -> Dict[str, Any]:
         """

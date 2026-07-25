@@ -41,96 +41,106 @@ _add_energyplus_to_path()
 # =============================================================================
 # 1. BUILT-IN SIMULATION ENGINE (fallback / unit testing)
 # =============================================================================
-class SimulationEngine:
-    """
-    Multi-Zone Building Physics Simulation Engine.
-    Simulates thermal dynamics, occupant loads, HVAC power, equipment stress,
-    and outdoor weather. Used as a fast fallback when EnergyPlus is not running.
-    """
-    def __init__(self):
-        self.timestep = 0
-        self.outdoor_temp = 25.0
-        self.outdoor_humidity = 50.0
-
-        self.zones = {
-            "Office": {
-                "temperature": 23.0, "target_setpoint": 22.0,
-                "humidity": 50.0, "co2": 420.0, "pmv": 0.2,
-                "occupancy": 8, "airflow": 0.5, "lighting_level": 0.8
-            },
-            "ConferenceRoom": {
-                "temperature": 24.5, "target_setpoint": 22.0,
-                "humidity": 55.0, "co2": 750.0, "pmv": 0.6,
-                "occupancy": 15, "airflow": 0.6, "lighting_level": 1.0
-            },
-            "Lobby": {
-                "temperature": 23.5, "target_setpoint": 23.0,
-                "humidity": 48.0, "co2": 450.0, "pmv": 0.3,
-                "occupancy": 4, "airflow": 0.4, "lighting_level": 0.6
-            },
-        }
-        self.equipment = {
-            "ahu_status": "NORMAL", "ahu_health": 98.0,
-            "pump_status": "NORMAL", "pump_health": 78.0,
-            "fan_status": "NORMAL", "fan_health": 95.0,
-            "chiller_status": "NORMAL", "chiller_health": 92.0,
-            "total_power_kw": 18.5,
-            "cumulative_runtime_hours": 145.0,
-            "cycling_count": 12,
-        }
-        self.total_energy_kwh = 0.0
-        self.carbon_emissions_kg = 0.0
-
-    def apply_actuators(self, setpoints, airflows, lighting,
-                        ventilation=None, pump_switch=False):
-        for z_id in self.zones:
-            if z_id in setpoints:
-                self.zones[z_id]["target_setpoint"] = setpoints[z_id]
-            if z_id in airflows:
-                self.zones[z_id]["airflow"] = airflows[z_id]
-            if z_id in lighting:
-                self.zones[z_id]["lighting_level"] = lighting[z_id]
-        if pump_switch:
-            self.equipment["pump_health"] = min(100.0, self.equipment["pump_health"] + 15.0)
-            self.equipment["pump_status"] = "REGENERATED"
-
-    def step(self) -> Dict[str, Any]:
-        self.timestep += 1
-        hour = (self.timestep * 0.25) % 24
-        self.outdoor_temp = 24.0 + 5.0 * math.sin((hour - 8) * math.pi / 12)
-        self.outdoor_humidity = 50.0 + 10.0 * math.cos(hour * math.pi / 12)
-
-        total_power = 0.0
-        for z_id, z in self.zones.items():
-            heat_gain = (self.outdoor_temp - z["temperature"]) * 0.08 + z["occupancy"] * 0.12 + z["lighting_level"] * 0.5
-            cooling = z["airflow"] * (z["temperature"] - (z["target_setpoint"] - 2.0)) * 0.35
-            z["temperature"] = round(z["temperature"] + heat_gain - cooling, 2)
-            z["pmv"] = round(max(-3.0, min(3.0, (z["temperature"] - 22.0) * 0.35 + (z["occupancy"] - 5) * 0.02)), 2)
-            z["co2"] = round(max(400.0, z["co2"] + z["occupancy"] * 12.0 - z["airflow"] * 150.0), 1)
-            total_power += (z["airflow"] * 3.5) + (abs(z["temperature"] - z["target_setpoint"]) * 1.8)
-
-        total_power += 5.0
-        self.equipment["total_power_kw"] = round(total_power, 2)
-        self.equipment["cumulative_runtime_hours"] += 0.25
-        if total_power > 25.0:
-            self.equipment["pump_health"] = max(0.0, self.equipment["pump_health"] - 0.2)
-            self.equipment["fan_health"] = max(0.0, self.equipment["fan_health"] - 0.1)
-
-        step_energy = total_power * 0.25
-        self.total_energy_kwh = round(self.total_energy_kwh + step_energy, 3)
-        self.carbon_emissions_kg = round(self.carbon_emissions_kg + step_energy * 0.45, 3)
-
-        return {
-            "timestep": self.timestep,
-            "outdoor_temp": round(self.outdoor_temp, 2),
-            "outdoor_humidity": round(self.outdoor_humidity, 2),
-            "zones": self.zones,
-            "equipment": self.equipment,
-            "total_energy_kwh": self.total_energy_kwh,
-            "carbon_emissions_kg": self.carbon_emissions_kg,
-        }
-
-
+# class SimulationEngine:
+#     """
+#     Multi-Zone Building Physics Simulation Engine.
+#     Simulates thermal dynamics, occupant loads, HVAC power, equipment stress,
+#     and outdoor weather. Used as a fast fallback when EnergyPlus is not running.
+#     """
+#     def __init__(self, is_baseline: bool = False):
+#         self.is_baseline = is_baseline
+#         self.timestep = 0
+#         self.outdoor_temp = 25.0
+#         self.outdoor_humidity = 50.0
+# 
+#         # Initialize BOTH models with the exact same physical starting state for fair comparison
+#         self.zones = {
+#             "Office": {
+#                 "temperature": 23.0, "target_setpoint": 20.0 if self.is_baseline else 22.0,
+#                 "humidity": 50.0, "co2": 420.0, "pmv": 0.2,
+#                 "occupancy": 8, "airflow": 1.0 if self.is_baseline else 0.5, "lighting_level": 1.0 if self.is_baseline else 0.8
+#             },
+#             "ConferenceRoom": {
+#                 "temperature": 24.5, "target_setpoint": 20.0 if self.is_baseline else 22.0,
+#                 "humidity": 55.0, "co2": 750.0, "pmv": 0.6,
+#                 "occupancy": 15, "airflow": 1.0 if self.is_baseline else 0.6, "lighting_level": 1.0
+#             },
+#             "Lobby": {
+#                 "temperature": 23.5, "target_setpoint": 20.0 if self.is_baseline else 23.0,
+#                 "humidity": 48.0, "co2": 450.0, "pmv": 0.3,
+#                 "occupancy": 4, "airflow": 1.0 if self.is_baseline else 0.4, "lighting_level": 1.0 if self.is_baseline else 0.6
+#             },
+#         }
+#         self.equipment = {
+#             "ahu_status": "NORMAL", "ahu_health": 98.0,
+#             "pump_status": "NORMAL", "pump_health": 78.0,
+#             "fan_status": "NORMAL", "fan_health": 95.0,
+#             "chiller_status": "NORMAL", "chiller_health": 92.0,
+#             "total_power_kw": 24.6 if self.is_baseline else 15.2,
+#             "cumulative_runtime_hours": 145.0,
+#             "cycling_count": 12,
+#         }
+#         self.total_energy_kwh = 0.0
+#         self.carbon_emissions_kg = 0.0
+# 
+#     def reset(self):
+#         """Resets simulation engine state back to initial step 0 state."""
+#         self.__init__(is_baseline=getattr(self, "is_baseline", False))
+# 
+#     def apply_actuators(self, setpoints, airflows, lighting,
+#                         ventilation=None, pump_switch=False):
+#         for z_id in self.zones:
+#             if z_id in setpoints:
+#                 self.zones[z_id]["target_setpoint"] = setpoints[z_id]
+#             if z_id in airflows:
+#                 self.zones[z_id]["airflow"] = airflows[z_id]
+#             if z_id in lighting:
+#                 self.zones[z_id]["lighting_level"] = lighting[z_id]
+#         if pump_switch:
+#             self.equipment["pump_health"] = min(100.0, self.equipment["pump_health"] + 15.0)
+#             self.equipment["pump_status"] = "REGENERATED"
+# 
+#     def step(self) -> Dict[str, Any]:
+#         self.timestep += 1
+#         hour = (self.timestep * 0.25) % 24
+#         self.outdoor_temp = 24.0 + 5.0 * math.sin((hour - 8) * math.pi / 12)
+#         self.outdoor_humidity = 50.0 + 10.0 * math.cos(hour * math.pi / 12)
+# 
+#         total_power = 0.0
+#         for z_id, z in self.zones.items():
+#             heat_gain = (self.outdoor_temp - z["temperature"]) * 0.08 + z["occupancy"] * 0.12 + z["lighting_level"] * 0.5
+#             cooling = z["airflow"] * (z["temperature"] - (z["target_setpoint"] - 2.0)) * 0.35
+#             z["temperature"] = round(z["temperature"] + heat_gain - cooling, 2)
+#             z["pmv"] = round(max(-3.0, min(3.0, (z["temperature"] - 22.0) * 0.35 + (z["occupancy"] - 5) * 0.02)), 2)
+#             z["co2"] = round(max(400.0, z["co2"] + z["occupancy"] * 12.0 - z["airflow"] * 150.0), 1)
+#             
+#             # Fan power + Chiller power (cooling outdoor air to supply temp)
+#             chiller_work = z["airflow"] * max(0, self.outdoor_temp - (z["target_setpoint"] - 2.0)) * 0.5
+#             total_power += (z["airflow"] * 3.5) + chiller_work
+# 
+#         total_power += 5.0
+#         self.equipment["total_power_kw"] = round(total_power, 2)
+#         self.equipment["cumulative_runtime_hours"] += 0.25
+#         if total_power > 25.0:
+#             self.equipment["pump_health"] = max(0.0, self.equipment["pump_health"] - 0.2)
+#             self.equipment["fan_health"] = max(0.0, self.equipment["fan_health"] - 0.1)
+# 
+#         step_energy = total_power * 0.25
+#         self.total_energy_kwh = round(self.total_energy_kwh + step_energy, 3)
+#         self.carbon_emissions_kg = round(self.carbon_emissions_kg + step_energy * 0.45, 3)
+# 
+#         return {
+#             "timestep": self.timestep,
+#             "outdoor_temp": round(self.outdoor_temp, 2),
+#             "outdoor_humidity": round(self.outdoor_humidity, 2),
+#             "zones": self.zones,
+#             "equipment": self.equipment,
+#             "total_energy_kwh": self.total_energy_kwh,
+#             "carbon_emissions_kg": self.carbon_emissions_kg,
+#         }
+# 
+# 
+# # =============================================================================
 # =============================================================================
 # 2. REAL ENERGYPLUS RUNNER (pyenergyplus.api)
 # =============================================================================
@@ -138,7 +148,6 @@ class SimulationEngine:
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_IDF = os.path.join(_HERE, "..", "building", "small_office.idf")
 _DEFAULT_EPW = os.path.join(_HERE, "..", "building", "weather.epw")
-
 
 class EnergyPlusRunner:
     """
@@ -241,6 +250,10 @@ class EnergyPlusRunner:
                 self._api.runtime.stop_simulation(self._ep_state)
             except Exception:
                 pass
+        
+        # Block until the background thread completely exits so it can't write to DB
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
         if self._thread:
             self._thread.join(timeout=10)
 
@@ -272,12 +285,14 @@ class EnergyPlusRunner:
         Advances EnergyPlus by exactly 1 timestep in lockstep.
         Blocks until EnergyPlus delivers the timestep snapshot.
         """
+        # Clear the done flag FIRST, so we guarantee we wait for the next step's completion
+        self._step_done.clear()
+        
         # Signal EnergyPlus thread to proceed with 1 timestep
         self._step_proceed.set()
-
-        # Wait for EnergyPlus to complete 1 timestep
+        
+        # Wait for EnergyPlus to complete exactly 1 timestep
         if self._step_done.wait(timeout=timeout):
-            self._step_done.clear()
             try:
                 snapshot = self._state_queue.get_nowait()
                 self._last_snapshot = snapshot
@@ -306,8 +321,11 @@ class EnergyPlusRunner:
         """Called by EnergyPlus at every zone-timestep. Reads state, writes actuators."""
         if not self._running:
             return
-
+        
         api = self._api
+        if not api.exchange.api_data_fully_ready(ep_state):
+            return
+            
         self._timestep += 1
 
         # ── Apply pending actuator commands ──────────────────────────
@@ -355,8 +373,6 @@ class EnergyPlusRunner:
             humidity = _get("Zone Air Relative Humidity", ep_zone)
             co2 = _get("Zone Air CO2 Concentration", ep_zone)
             people = _get("Zone People Occupant Count", ep_zone)
-            hvac_power = _get("Zone Mechanical Ventilation Current Density Volume Flow Rate", ep_zone)
-            total_power_kw += hvac_power
 
             # PMV approximation (EnergyPlus may not expose it directly via API)
             pmv = round(max(-3.0, min(3.0, (temp - 22.0) * 0.35 + (people - 5) * 0.02)), 2)
@@ -374,18 +390,17 @@ class EnergyPlusRunner:
 
         # ── Outdoor weather ───────────────────────────────────────────
         try:
-            # Get current simulation hour and timestep for weather lookup
-            cur_hour = int(api.exchange.current_time(ep_state)) % 24
-            cur_ts   = max(1, self._timestep % 4 + 1)   # 15-min steps: 1-4
-            outdoor_temp = api.exchange.today_weather_outdoor_dry_bulb_at_time(ep_state, cur_hour, cur_ts)
-            outdoor_humidity = api.exchange.today_weather_outdoor_relative_humidity_at_time(ep_state, cur_hour, cur_ts)
+            oa_temp_handle = api.exchange.get_variable_handle(ep_state, "Site Outdoor Air Drybulb Temperature", "Environment")
+            oa_hum_handle  = api.exchange.get_variable_handle(ep_state, "Site Outdoor Air Relative Humidity", "Environment")
+            outdoor_temp = api.exchange.get_variable_value(ep_state, oa_temp_handle) if oa_temp_handle != -1 else 25.0
+            outdoor_humidity = api.exchange.get_variable_value(ep_state, oa_hum_handle) if oa_hum_handle != -1 else 50.0
             # Sanity guard — EP returns 0.0 during pre-warmup
             if outdoor_temp == 0.0:
-                outdoor_temp = 15.0
+                outdoor_temp = 25.0
             if outdoor_humidity == 0.0:
                 outdoor_humidity = 50.0
         except Exception:
-            outdoor_temp = 15.0
+            outdoor_temp = 25.0
             outdoor_humidity = 50.0
 
         # ── Energy & carbon accumulation ──────────────────────────────

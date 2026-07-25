@@ -16,7 +16,7 @@ from .agents.council import AgentCouncil
 from .validator.safety_validator import SafetyValidator
 from .controller.forward_controller import ForwardController
 from .health_engine.engine import EquipmentHealthEngine
-from .energyplus.runner import SimulationEngine, EnergyPlusRunner
+from .energyplus.runner import EnergyPlusRunner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("SentinelAI")
@@ -50,8 +50,7 @@ class SentinelAIControlLoop:
             self.simulator.start()
             logger.info("SentinelAI running with REAL EnergyPlus simulation.")
         else:
-            self.simulator = SimulationEngine()
-            logger.info("SentinelAI running with built-in physics engine (use use_energyplus=True for real EnergyPlus).")
+            raise NotImplementedError("The mock physics engine has been removed. You must use use_energyplus=True.")
 
         self.controller = ForwardController(self.simulator)
 

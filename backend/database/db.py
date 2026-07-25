@@ -11,16 +11,23 @@ from .models import BuildingState, AgentCouncilDecision, ValidationResult, Equip
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sentinel_ai.db")
 
+import contextlib
+
 class DatabaseManager:
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
         self.db_path = db_path
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
-    def get_connection(self) -> sqlite3.Connection:
+    @contextlib.contextmanager
+    def get_connection(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
         with self.get_connection() as conn:

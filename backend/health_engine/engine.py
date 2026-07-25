@@ -44,6 +44,7 @@ class EquipmentHealthEngine:
 
         self.prev_power_kw: float = 0.0
         self.prev_cycling_count: int = 0
+        self.latest_report: Optional[OverallBuildingHealthReport] = None
 
     def evaluate_state(self, state: BuildingState) -> OverallBuildingHealthReport:
         """
@@ -75,9 +76,9 @@ class EquipmentHealthEngine:
             # Status assignment
             if self.health_scores[eq] < 40.0:
                 self.statuses[eq] = "CRITICAL"
-            elif self.health_scores[eq] < 70.0:
+            elif self.health_scores[eq] < 75.0:
                 self.statuses[eq] = "DEGRADED"
-            else:
+            elif self.statuses[eq] != "REGENERATED":
                 self.statuses[eq] = "NORMAL"
 
         self.prev_power_kw = power_kw
@@ -129,7 +130,7 @@ class EquipmentHealthEngine:
         }
         overall_health = sum(self.health_scores[eq] * weights[eq] for eq in EquipmentType)
 
-        return OverallBuildingHealthReport(
+        report = OverallBuildingHealthReport(
             timestep=state.timestep,
             timestamp=time.time(),
             overall_health_score=round(overall_health, 1),
@@ -137,8 +138,10 @@ class EquipmentHealthEngine:
             building_anomalies=all_anomalies,
             active_alerts=all_alerts
         )
+        self.latest_report = report
+        return report
 
-    def apply_regeneration_switch(self, equipment_type: EquipmentType = EquipmentType.PUMP, boost_pct: float = 15.0):
+    def apply_regeneration_switch(self, equipment_type: EquipmentType = EquipmentType.PUMP, boost_pct: float = 20.0):
         """Applies maintenance regeneration boost (e.g. pump switchover or fluid flushing)."""
         self.health_scores[equipment_type] = min(100.0, self.health_scores[equipment_type] + boost_pct)
         self.statuses[equipment_type] = "REGENERATED"

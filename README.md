@@ -1,6 +1,6 @@
 # 🏢 SentinelAI: Health-Aware Autonomous Building Intelligence Platform
 
-> **Honeywell Building Automation Hackathon Project**  
+> **Autonomous Building Intelligence Platform**  
 > An autonomous Building Management System (BMS) integrating **EnergyPlus**, an **Open-Source LLM**, and the **Model Context Protocol (MCP)** to operate a closed-loop control system optimizing across **Energy**, **Comfort**, **Carbon**, and **Equipment Health**.
 
 ---
@@ -26,7 +26,8 @@ SentinelAI transforms conventional static-schedule Building Management Systems i
 | **Phase 2** | **Modular 9-Rule Safety Engine & LKG Serialization** | ✅ **Completed** |
 | **Phase 3** | **Baseline Comparison Framework & Dual Simulation** | ✅ **Completed** |
 | **Phase 4** | **Equipment Health Engine (Stress, RUL, Anomaly)** | ✅ **Completed** |
-| **Phase 5** | **Live Analytics & Decision Dashboard (FastAPI + Plotly)** | 📋 Planned |
+| **Phase 5** | **Live Analytics & Decision Dashboard (FastAPI + Plotly)** | ✅ **Completed** |
+| **Phase 6** | **Interactive 2D/3D Digital Twin Visualizer** | 📋 Planned |
 | **Phase 6** | **Interactive 2D/3D Digital Twin Visualizer** | 📋 Planned |
 | **Phase 7** | **Demo Scenario, Video & Presentation** | 📋 Planned |
 
@@ -57,7 +58,13 @@ pip install -r requirements.txt
 python -m backend.run_loop --steps 10 --energyplus
 ```
 
-### 2. Run Side-by-Side Dual Simulation (Baseline vs SentinelAI)
+### 2. Launch FastAPI Backend & Honeywell BMS Web Dashboard (Phase 5)
+```bash
+python -m backend.api.main
+# Open http://localhost:8000 in your browser
+```
+
+### 3. Run Side-by-Side Dual Simulation (Baseline vs SentinelAI)
 ```bash
 python -m backend.building.dual_runner --steps 10
 ```

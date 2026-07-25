@@ -31,3 +31,8 @@ eplusout.*
 .DS_Store
 Thumbs.db
 xtra
+
+# Secrets & API Keys
+.env
+api_key
+*.key
