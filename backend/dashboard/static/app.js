@@ -778,8 +778,8 @@ function updateCharts(history, comp) {
     }, { responsive: true, displayModeBar: false });
 
     if (comp) {
-        const bEnergy = comp.baseline_energy_kwh || 4.109;
-        const aiEnergy = comp.ai_energy_kwh || 4.109;
+        const bEnergy = comp.baseline?.energy_kwh || comp.baseline_energy_kwh || 4.109;
+        const aiEnergy = comp.sentinel_ai?.energy_kwh || comp.ai_energy_kwh || 4.109;
         
         Plotly.react("chart-energy-comp", [
             { x: ['Current Cumulative'], y: [bEnergy], name: 'Baseline Energy (kWh)', type: 'bar', marker: { color: '#64748b' } },
