@@ -101,13 +101,19 @@ class AgentCouncil:
         if os.environ.get("SENTINEL_SKIP_REMOTE_LLM", "").lower() in {"1", "true", "yes"}:
             return self._deterministic_council_engine(context, rejection_feedback)
 
-        if self.api_key and self.api_url:
+        if self.api_url:
             try:
                 decision = self._call_llm_api(user_prompt)
                 if decision:
                     return decision
             except Exception as e:
                 logger.warning(f"LLM API call failed ({e}). Falling back to deterministic council engine.")
+                # Dump error to log file for debugging local model
+                try:
+                    with open("llm_debug_log.json", "w") as f:
+                        json.dump({"error": str(e)}, f, indent=2)
+                except Exception:
+                    pass
 
         return self._deterministic_council_engine(context, rejection_feedback)
 
@@ -157,9 +163,16 @@ class AgentCouncil:
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
 
-        with urllib.request.urlopen(req, timeout=5, context=context) as response:
+        with urllib.request.urlopen(req, timeout=60, context=context) as response:
             res_body = response.read().decode("utf-8")
             res_json = json.loads(res_body)
+            
+            # Log the raw JSON to a file for user debugging
+            try:
+                with open("llm_debug_log.json", "w") as f:
+                    json.dump(res_json, f, indent=2)
+            except Exception:
+                pass
             
             if is_gemini:
                 content = res_json["candidates"][0]["content"]["parts"][0]["text"]
