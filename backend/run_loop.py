@@ -80,10 +80,15 @@ class SentinelAIControlLoop:
         self.controller = ForwardController(self.simulator)
         
         # Digital Twin visualization is now rendered in the browser (Canvas in index.html)
+        self.pending_validation_result = None
+        self.pending_building_state = None
+        self.pending_health_report = None
+        self.pending_council_decision = None
+        self.pending_loop_timestep = 0
 
-    def run_step(self) -> Dict[str, Any]:
+    def propose_step(self) -> Dict[str, Any]:
         """
-        Executes a single 1-step autonomous closed-loop cycle.
+        Executes the autonomous loop up to the safety validation step, but DOES NOT apply to controller.
         """
         self.control_step += 1
         loop_timestep = self.control_step
@@ -148,22 +153,11 @@ class SentinelAIControlLoop:
                 current_setpoints=current_setpoints
             )
 
-        # Log final validation result
-        self.db_manager.log_validation_result(building_state.timestep, time.time(), val_result)
-
-        action_to_apply = val_result.applied_action or val_result.action
-
-        # Step 6: Forward Controller Actuation
-        actuation_result = self.controller.apply_action(action_to_apply)
-
-        logger.info(
-            f"Timestep {building_state.timestep} Completed | Outdoor: {building_state.outdoor_temp}°C | "
-            f"Energy: {building_state.total_energy_kwh} kWh | Health: {health_report.overall_health_score}% | "
-            f"Validated: {val_result.is_valid} | Fallback: {val_result.used_fallback}"
-        )
-
-        # Step 7: Digital Twin visualization is handled by the browser Canvas
-        # (The browser polls /api/state/latest every 3 seconds and redraws the canvas)
+        self.pending_validation_result = val_result
+        self.pending_building_state = building_state
+        self.pending_health_report = health_report
+        self.pending_council_decision = council_decision
+        self.pending_loop_timestep = loop_timestep
 
         return {
             "timestep": loop_timestep,
@@ -171,8 +165,47 @@ class SentinelAIControlLoop:
             "health_report": health_report,
             "council_decision": council_decision,
             "validation_result": val_result,
+            "status": "PROPOSED"
+        }
+
+    def apply_step(self, mcp_action_to_apply=None) -> Dict[str, Any]:
+        """
+        Applies the pending validated action (or a manually confirmed MCP action) to the controller.
+        """
+        if not self.pending_validation_result:
+            raise ValueError("No pending step to apply. Call propose_step() first.")
+
+        # If MCP provided an explicitly confirmed action, use it, otherwise use the AI's validated action
+        action_to_apply = mcp_action_to_apply or self.pending_validation_result.applied_action or self.pending_validation_result.action
+
+        # Step 6: Forward Controller Actuation
+        actuation_result = self.controller.apply_action(action_to_apply)
+
+        logger.info(
+            f"Timestep {self.pending_building_state.timestep} Completed | Outdoor: {self.pending_building_state.outdoor_temp}°C | "
+            f"Energy: {self.pending_building_state.total_energy_kwh} kWh | Health: {self.pending_health_report.overall_health_score}% | "
+            f"Validated: {self.pending_validation_result.is_valid} | Fallback: {self.pending_validation_result.used_fallback}"
+        )
+
+        res = {
+            "timestep": self.pending_loop_timestep,
+            "building_state": self.pending_building_state,
+            "health_report": self.pending_health_report,
+            "council_decision": self.pending_council_decision,
+            "validation_result": self.pending_validation_result,
             "actuation_result": actuation_result
         }
+        
+        # Clear pending
+        self.pending_validation_result = None
+        self.pending_building_state = None
+        
+        return res
+
+    def run_step(self) -> Dict[str, Any]:
+        """Backward compatible full-cycle run_step."""
+        self.propose_step()
+        return self.apply_step()
 
     def run_n_steps(self, num_steps: int = 10) -> List[Dict[str, Any]]:
         results = []

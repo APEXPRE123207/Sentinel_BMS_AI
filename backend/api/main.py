@@ -328,9 +328,9 @@ def trigger_step():
         "fallback_used": result["validation_result"].used_fallback
     }
 
-@app.post("/api/control/dual_step")
-def trigger_dual_step():
-    """Triggers 1 side-by-side Dual Simulation comparison step using persistent state."""
+@app.post("/api/control/propose_dual_step")
+def trigger_propose_dual_step():
+    """Advances simulation, runs AI evaluation, and returns proposed actions without applying them."""
     global control_loop, baseline_runner
     if not baseline_runner:
         from backend.building.baseline_runner import BaselineSimulationRunner
@@ -341,10 +341,59 @@ def trigger_dual_step():
         control_loop = SentinelAIControlLoop(db_path=db_manager.db_path, use_energyplus=True, idf_path=idf_path, epw_path=epw_path)
         
     baseline_runner.run_step()
-    ai_res = control_loop.run_step()
+    ai_res = control_loop.propose_step()
     
     from backend.analytics.comparator import BaselineComparator
     comp = BaselineComparator(db_manager)
+    comp_res = comp.evaluate_timestep(ai_res["building_state"])
+    
+    proposed_action = ai_res["validation_result"].applied_action or ai_res["validation_result"].action
+    
+    return {
+        "status": "PROPOSED",
+        "comparison": comp_res,
+        "proposed_action": proposed_action.to_dict() if hasattr(proposed_action, "to_dict") else proposed_action.__dict__
+    }
+
+from backend.mcp.tools import MCPToolServer
+import datetime
+
+@app.post("/api/control/apply_mcp")
+def apply_mcp_actions(action_payload: dict):
+    """Called when human confirms the MCP action. Applies the action and logs it."""
+    global control_loop
+    if not control_loop or not control_loop.pending_validation_result:
+        return {"status": "ERROR", "message": "No pending step found."}
+        
+    mcp = MCPToolServer()
+    mcp.update_state(control_loop.pending_building_state)
+    
+    # User confirmed action, let's call MCP tools
+    # Actually, the AI already decided the action, but we are running it through MCP Tools explicitly!
+    if "zone_setpoints" in action_payload:
+        for z, val in action_payload["zone_setpoints"].items():
+            mcp.set_hvac_setpoint(z, val)
+    if "zone_airflows" in action_payload:
+        for z, val in action_payload["zone_airflows"].items():
+            mcp.set_airflow(z, val)
+    if "zone_lighting" in action_payload:
+        for z, val in action_payload["zone_lighting"].items():
+            mcp.set_lighting(z, val)
+    if "ventilation_rate" in action_payload:
+        mcp.set_ventilation(action_payload["ventilation_rate"])
+    if action_payload.get("pump_switch_active"):
+        mcp.switch_pump()
+        
+    # Log to mcp_audit.log
+    with open("mcp_audit.log", "a") as f:
+        f.write(f"[{datetime.datetime.now().isoformat()}] HITL Confirmed: True | Success: True\n")
+        f.write(f"Applied MCP Action: {json.dumps(mcp.pending_action.__dict__)}\n")
+        f.write("-" * 50 + "\n")
+        
+    ai_res = control_loop.apply_step(mcp_action_to_apply=mcp.pending_action)
+    
+    from backend.analytics.comparator import BaselineComparator
+    comp = BaselineComparator(control_loop.db)
     comp_res = comp.evaluate_timestep(ai_res["building_state"])
     
     return {

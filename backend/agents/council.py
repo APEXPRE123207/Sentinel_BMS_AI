@@ -65,25 +65,19 @@ class AgentCouncil:
                 self.is_ollama_native = True
                 logger.info(f"AgentCouncil initialized with LOCAL Ollama Model: {local_model}")
             else:
-                ollama_key = os.environ.get("OLLAMA_API_KEY")
-                if ollama_key:
-                    self.api_url = "https://ollama.com/api/chat"
-                    self.api_key = ollama_key
-                    self.model_name = "minimax-m3"
-                    self.is_ollama_cloud = True
-                    logger.info("AgentCouncil initialized with Ollama Cloud API Key from .env")
-                else:
-                    env_key = os.environ.get("LLM_API_KEY")
-                    if env_key:
-                        if env_key == "0":
-                            self.api_url = "http://localhost:11434/v1/chat/completions"
-                            self.model_name = "minimax-m3"
-                            logger.info("AgentCouncil detected LLM_API_KEY=0. Routing to local Ollama.")
-                        else:
-                            self.api_key = env_key
-                            if not self.api_url:
-                                self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-                            logger.info("AgentCouncil initialized with Cloud API Key from .env")
+                env_key = os.environ.get("LLM_API_KEY")
+                if env_key:
+                    if env_key == "0":
+                        self.api_url = "http://localhost:11434/v1/chat/completions"
+                        self.model_name = "minimax-m3"
+                        logger.info("AgentCouncil detected LLM_API_KEY=0. Routing to local Ollama.")
+                    else:
+                        self.api_key = env_key
+                        self.api_url = os.environ.get("LLM_API_URL")
+                        self.model_name = os.environ.get("LLM_MODEL_NAME") or self.model_name
+                        if not self.api_url:
+                            self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+                        logger.info(f"AgentCouncil initialized with Cloud API Key for endpoint: {self.api_url}")
 
     def evaluate(
         self,
@@ -122,6 +116,7 @@ class AgentCouncil:
         system_instruction = COUNCIL_SYSTEM_PROMPT
         
         is_gemini = "generativelanguage.googleapis.com" in self.api_url
+        is_ollama = "api/chat" in self.api_url or getattr(self, "is_ollama_native", False)
         headers = {"Content-Type": "application/json"}
         
         if is_gemini:
@@ -131,7 +126,7 @@ class AgentCouncil:
                 "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
                 "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
             }
-        elif getattr(self, "is_ollama_cloud", False) or getattr(self, "is_ollama_native", False):
+        elif is_ollama:
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             payload = {
@@ -167,25 +162,52 @@ class AgentCouncil:
 
         with urllib.request.urlopen(req, timeout=60, context=context) as response:
             res_body = response.read().decode("utf-8")
-            res_json = json.loads(res_body)
             
-            # Log the raw JSON to a file for user debugging
+            # Log the raw HTTP response body to a file for debugging
             try:
-                with open("llm_debug_log.json", "w") as f:
-                    json.dump(res_json, f, indent=2)
+                with open("api_raw_response.txt", "w", encoding="utf-8") as f:
+                    f.write(res_body)
             except Exception:
                 pass
-            
-            if is_gemini:
-                content = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            elif getattr(self, "is_ollama_cloud", False) or getattr(self, "is_ollama_native", False):
-                content = res_json["message"]["content"]
+                
+            # Some endpoints (like Ollama) might force streaming (JSON Lines) even when stream=False
+            if res_body.strip().count("\n") > 0 and res_body.strip().startswith("{") and res_body.strip().endswith("}"):
+                res_json = None
+                content = ""
+                for line in res_body.strip().split("\n"):
+                    if line.strip():
+                        chunk = json.loads(line)
+                        if is_ollama:
+                            content += chunk.get("message", {}).get("content", "")
+                        else:
+                            choices = chunk.get("choices", [{}])
+                            if choices:
+                                delta = choices[0].get("delta", {}) or choices[0].get("message", {})
+                                content += delta.get("content", "")
             else:
-                content = res_json["choices"][0]["message"]["content"]
+                res_json = json.loads(res_body)
+                if is_gemini:
+                    content = res_json["candidates"][0]["content"]["parts"][0]["text"]
+                elif is_ollama:
+                    content = res_json.get("message", {}).get("content", "")
+                else:
+                    content = res_json["choices"][0]["message"]["content"]
                 
             # Clean markdown code blocks if the model wrapped the JSON
-            if content.startswith("```"):
-                content = content.strip("`").removeprefix("json").strip()
+            content = content.strip()
+            
+            # Robust JSON extraction
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
+            
+            # Log the raw text that we are about to parse, for debugging!
+            try:
+                with open("llm_raw_output.txt", "w", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception:
+                pass
                 
             parsed = json.loads(content)
 

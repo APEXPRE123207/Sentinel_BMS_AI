@@ -799,15 +799,69 @@ function updateCharts(history, comp) {
 async function triggerStep() {
     const btn = document.getElementById("btn-run-step");
     btn.disabled = true;
-    btn.textContent = "Running...";
+    btn.textContent = "Proposing...";
     try {
-        await fetch("/api/control/step", { method: "POST" });
-        await fetchDashboardData();
+        const res = await fetch("/api/control/propose_dual_step", { method: "POST" });
+        const data = await res.json();
+        
+        if (data.status === "PROPOSED" && data.proposed_action) {
+            // Show the bubble!
+            document.getElementById("mcp-hitl-container").style.display = "block";
+            document.getElementById("mcp-hitl-bubble").style.display = "flex";
+            document.getElementById("mcp-hitl-popup").style.display = "none";
+            
+            // Format the proposed actions
+            const p = data.proposed_action;
+            let displayStr = "";
+            if (p.zone_setpoints) displayStr += `🌡️ Setpoints:\n${JSON.stringify(p.zone_setpoints, null, 2)}\n\n`;
+            if (p.zone_airflows) displayStr += `💨 Airflows:\n${JSON.stringify(p.zone_airflows, null, 2)}\n\n`;
+            if (p.zone_lighting) displayStr += `💡 Lighting:\n${JSON.stringify(p.zone_lighting, null, 2)}\n\n`;
+            if (p.ventilation_rate) displayStr += `🌬️ Ventilation Rate: ${p.ventilation_rate}\n\n`;
+            if (p.pump_switch_active !== undefined) displayStr += `⚙️ Pump Active: ${p.pump_switch_active}\n`;
+            
+            document.getElementById("mcp-hitl-details").textContent = displayStr;
+            
+            // Store the payload so the confirm button can send it
+            window._pendingMCPPayload = p;
+        } else {
+            await fetchDashboardData();
+        }
+    } catch (e) {
+        console.error("Step error", e);
     } finally {
         btn.disabled = false;
         btn.textContent = "▶ Execute Step";
     }
 }
+
+// Global confirm button listener
+document.addEventListener("DOMContentLoaded", () => {
+    const confirmBtn = document.getElementById("btn-mcp-confirm");
+    if (confirmBtn) {
+        confirmBtn.addEventListener("click", async () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Applying...";
+            try {
+                const res = await fetch("/api/control/apply_mcp", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(window._pendingMCPPayload || {})
+                });
+                
+                // Hide popup
+                document.getElementById("mcp-hitl-container").style.display = "none";
+                
+                // Fetch the new state now that simulation has advanced
+                await fetchDashboardData();
+            } catch (err) {
+                console.error("MCP Apply error:", err);
+            } finally {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "Approve & Apply Settings";
+            }
+        });
+    }
+});
 
 
 async function triggerPumpRegen() {

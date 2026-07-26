@@ -411,6 +411,37 @@
         </div>
     </div>
 
+    <!-- AI Proposal Bubble / Popup (HITL) -->
+    <div id="mcp-hitl-container" style="display: none; position: fixed; bottom: 20px; right: 20px; z-index: 1000; font-family: sans-serif;">
+        <!-- The small bubble -->
+        <div id="mcp-hitl-bubble" onclick="document.getElementById('mcp-hitl-popup').style.display='block'; this.style.display='none';" style="background: #3b82f6; color: white; padding: 12px 20px; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-weight: bold; display: flex; align-items: center; gap: 8px;">
+            <span>🤖 AI Proposal Ready</span>
+            <span class="pulse-dot" style="width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 2s infinite;"></span>
+        </div>
+        
+        <!-- The expanded popup -->
+        <div id="mcp-hitl-popup" style="display: none; background: #1e293b; border: 1px solid #334155; border-radius: 8px; width: 350px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); overflow: hidden;">
+            <div style="background: #3b82f6; color: white; padding: 12px 16px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+                <span>Confirm MCP Actions</span>
+                <button onclick="document.getElementById('mcp-hitl-popup').style.display='none'; document.getElementById('mcp-hitl-bubble').style.display='flex';" style="background: none; border: none; color: white; cursor: pointer; font-size: 16px;">×</button>
+            </div>
+            <div style="padding: 16px;">
+                <p style="margin-top: 0; color: #94a3b8; font-size: 0.9rem;">The Agent Council proposes the following actions via MCP tools:</p>
+                <pre id="mcp-hitl-details" style="background: #0f172a; padding: 10px; border-radius: 4px; font-size: 0.8rem; color: #38bdf8; overflow-x: auto; margin-bottom: 16px;">
+                </pre>
+                <button id="btn-mcp-confirm" class="btn btn-primary" style="width: 100%; justify-content: center;">Approve & Apply Settings</button>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+        }
+    </style>
+
     <!-- Plotly via CDN -->
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     
