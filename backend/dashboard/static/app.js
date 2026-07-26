@@ -483,6 +483,17 @@ function updateVitalMetrics(state, comp, health) {
     if (elAiPmv) elAiPmv.textContent = `${aiPmv} (${getPmvLabel(aiPmv)})`;
     if (elDeltaComfort) elDeltaComfort.textContent = `+${savingsDelta.toFixed(2)} PMV Delta`;
     if (elDeltaEnergy) elDeltaEnergy.textContent = `${energySavedPct}% Saved`;
+
+    const elAiDecisions = document.getElementById("dual-ai-decisions");
+    if (elAiDecisions && state && state.zones) {
+        let html = `# Dynamic AI Decisions<br>`;
+        for (const [zId, z] of Object.entries(state.zones)) {
+            const sp = (z.target_setpoint || 22.0).toFixed(1);
+            const flow = (z.airflow || 0.5).toFixed(2);
+            html += `${zId}: setpoint=${sp}°C, airflow=${flow}<br>`;
+        }
+        elAiDecisions.innerHTML = html;
+    }
 }
 
 function updateAlertBanner(health) {

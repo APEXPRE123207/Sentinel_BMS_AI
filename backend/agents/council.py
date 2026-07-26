@@ -60,8 +60,9 @@ class AgentCouncil:
             
             local_model = os.environ.get("LOCAL_OLLAMA_MODEL")
             if local_model:
-                self.api_url = "http://localhost:11434/v1/chat/completions"
+                self.api_url = "http://localhost:11434/api/chat"
                 self.model_name = local_model
+                self.is_ollama_native = True
                 logger.info(f"AgentCouncil initialized with LOCAL Ollama Model: {local_model}")
             else:
                 ollama_key = os.environ.get("OLLAMA_API_KEY")
@@ -130,8 +131,9 @@ class AgentCouncil:
                 "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
                 "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
             }
-        elif getattr(self, "is_ollama_cloud", False):
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        elif getattr(self, "is_ollama_cloud", False) or getattr(self, "is_ollama_native", False):
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
             payload = {
                 "model": self.model_name,
                 "messages": [
@@ -176,7 +178,7 @@ class AgentCouncil:
             
             if is_gemini:
                 content = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            elif getattr(self, "is_ollama_cloud", False):
+            elif getattr(self, "is_ollama_cloud", False) or getattr(self, "is_ollama_native", False):
                 content = res_json["message"]["content"]
             else:
                 content = res_json["choices"][0]["message"]["content"]
