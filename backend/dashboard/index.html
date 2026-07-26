@@ -54,7 +54,6 @@
                 </div>
                 <button class="btn btn-primary" id="btn-config-modal">⚙️ Scenario Config</button>
                 <button class="btn btn-autoplay" id="btn-autoplay">▶ Play Day</button>
-                <button class="btn btn-secondary" id="btn-dual-step">⚡ Run Dual Step</button>
                 <button class="btn btn-primary" id="btn-run-step">▶ Execute Step</button>
                 <button class="btn btn-danger" id="btn-reset-db">🗑️ Reset DB</button>
                 <button class="btn btn-tour" id="btn-start-tour">❓ Show me around</button>
@@ -174,14 +173,14 @@
                         <h4>🏛️ Baseline Building (Static Schedules)</h4>
                         <div class="dual-stat">Energy Consumption: <span id="dual-base-energy" class="text-amber">4.109 kWh</span></div>
                         <div class="dual-stat">Occupant Comfort (PMV): <span id="dual-base-pmv" class="text-red">-2.55 (Cold Discomfort)</span></div>
-                        <div class="dual-sub">Static thermostat schedules operating without dynamic AI feedback.</div>
+                        <div class="dual-sub">Static thermostat schedules (constant 22°C cooling / 20°C heating) fail to adapt to dynamic occupancy loads, causing extreme PMV drift and discomfort.</div>
                     </div>
                     <div class="dual-vs">VS</div>
                     <div class="dual-box dual-ai">
                         <h4>🤖 SentinelAI (Autonomous Control)</h4>
                         <div class="dual-stat">Energy Consumption: <span id="dual-ai-energy" class="text-emerald">4.109 kWh</span></div>
                         <div class="dual-stat">Occupant Comfort (PMV): <span id="dual-ai-pmv" class="text-emerald">-1.11 (Comfortable)</span></div>
-                        <div class="dual-sub">Dynamic LLM Agent Council setpoint & airflow optimization.</div>
+                        <div class="dual-sub">Dynamic LLM Agent Council proactively adjusts setpoints & airflow based on real-time weather, heat loads, and CO2, keeping PMV tightly bounded to 0 (Neutral).</div>
                     </div>
                     <div class="dual-box dual-summary">
                         <h4>🏆 Empirical Improvement</h4>

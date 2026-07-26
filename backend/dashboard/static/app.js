@@ -28,7 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 3000);
 
     document.getElementById("btn-run-step").addEventListener("click", triggerStep);
-    document.getElementById("btn-dual-step").addEventListener("click", triggerDualStep);
     document.getElementById("btn-autoplay").addEventListener("click", toggleAutoplay);
     document.getElementById("btn-reset-db").addEventListener("click", resetDatabase);
 
@@ -203,7 +202,6 @@ function startAutoplay() {
     btn.classList.add("playing");
 
     document.getElementById("btn-run-step").disabled = true;
-    document.getElementById("btn-dual-step").disabled = true;
 
     const speedMultiplier = parseInt(document.getElementById("speed-select").value, 10) || 5;
     const intervalMs = Math.max(20, Math.floor(1000 / speedMultiplier));
@@ -353,7 +351,6 @@ function stopAutoplay() {
     btn.classList.remove("playing");
 
     document.getElementById("btn-run-step").disabled = false;
-    document.getElementById("btn-dual-step").disabled = false;
 }
 
 async function fetchDashboardData() {
@@ -605,7 +602,10 @@ function updateDayTimelineAndLog(history, logs, council) {
         tr.onclick = () => highlightLogRow(h.timestep);
 
         const timeStr = stepToTimeOfDay(h.timestep);
-        const occ = (h.zones && h.zones.Office) ? h.zones.Office.occupancy : 0;
+        let occ = 0;
+        if (h.zones) {
+            Object.values(h.zones).forEach(z => { occ += (z.occupancy || 0); });
+        }
         const setpoint = (h.zones && h.zones.Office) ? h.zones.Office.target_setpoint : 22.0;
 
         tr.innerHTML = `
@@ -798,18 +798,6 @@ async function triggerStep() {
     }
 }
 
-async function triggerDualStep() {
-    const btn = document.getElementById("btn-dual-step");
-    btn.disabled = true;
-    btn.textContent = "Running Dual...";
-    try {
-        await fetch("/api/control/dual_step", { method: "POST" });
-        await fetchDashboardData();
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "⚡ Run Dual Step";
-    }
-}
 
 async function triggerPumpRegen() {
     try {

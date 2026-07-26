@@ -790,9 +790,9 @@ body {
     border: 1px solid var(--border-color);
     background: #0f1729;
     width: 100%;
-    max-width: 1100px;
+    max-width: 1200px;
     height: auto;
-    aspect-ratio: 1100 / 420;
+    aspect-ratio: 2 / 1;
 }
 
 .config-overlay {

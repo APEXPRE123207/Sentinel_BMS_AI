@@ -268,40 +268,22 @@ def get_latest_health():
 @app.get("/api/comparison/latest")
 def get_latest_comparison():
     """Returns the latest empirical Baseline vs SentinelAI comparison metrics."""
-    default_result = {
-        "energy_saved_pct": 0.0,
-        "carbon_reduced_pct": 0.0,
-        "comfort_improvement": 0.0,
-        "baseline_energy_kwh": 0.0,
-        "ai_energy_kwh": 0.0,
-        "baseline_pmv": 0.0,
-        "ai_pmv": 0.0
-    }
+    default_result = {}
     try:
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM AISimulationMetrics ORDER BY id DESC LIMIT 1;")
+            cursor.execute("SELECT * FROM BuildingState ORDER BY id DESC LIMIT 1;")
             ai_row = cursor.fetchone()
             
             if not ai_row:
                 return default_result
+                
+            from backend.database.models import BuildingState
+            ai_state = BuildingState.from_dict(dict(ai_row))
             
-            ai_d = dict(ai_row)
-            b_d = db_manager.get_latest_baseline_metrics(ai_d["timestep"]) or {}
-
-            baseline_pmv = b_d.get("avg_pmv", ai_d.get("avg_pmv", 0.0))
-            ai_pmv = ai_d.get("avg_pmv", 0.0)
-
-            return {
-                "timestep": ai_d["timestep"],
-                "energy_saved_pct": ai_d.get("energy_saved_pct", 0.0),
-                "carbon_reduced_pct": ai_d.get("carbon_reduced_pct", 0.0),
-                "comfort_improvement": round(abs(baseline_pmv) - abs(ai_pmv), 3),
-                "baseline_energy_kwh": b_d.get("total_energy_kwh", ai_d["total_energy_kwh"]),
-                "ai_energy_kwh": ai_d["total_energy_kwh"],
-                "baseline_pmv": baseline_pmv,
-                "ai_pmv": ai_pmv
-            }
+            from backend.analytics.comparator import BaselineComparator
+            comp = BaselineComparator(db_manager)
+            return comp.evaluate_timestep(ai_state)
     except Exception as e:
         logger.warning(f"Comparison query failed: {e}")
         return default_result
