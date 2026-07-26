@@ -36,3 +36,10 @@ xtra
 .env
 api_key
 *.key
+
+# Debug & Audit Logs
+mcp_audit.log
+llm_raw_output.txt
+api_raw_response.txt
+llm_debug_log.json
+
