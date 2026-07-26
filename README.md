@@ -5,7 +5,27 @@
 
 ---
 
+## 📦 Submission Deliverables & Proof of Concept
+
+This project was built for the Honeywell Hackathon. **Judges can find all required deliverables directly below:**
+
+- 🎥 **PoC Demonstration Video**: [Honeywell_Hackathon_Project_23BAI1265.mp4](./deliverables/Honeywell_Hackathon_Project_23BAI1265.mp4)
+- 📊 **Presentation Slides**: [SentinelAI_BMS_Presentation.pdf](./deliverables/SentinelAI_BMS_Presentation.pdf) (also available in [PPTX format](./deliverables/SentinelAI_BMS_Presentation.pptx))
+- 🏗️ **System Architecture Document**: [`ARCHITECTURE.md`](./deliverables/ARCHITECTURE.md) (also available in [DOCX format](./deliverables/ARCHITECTURE.docx))
+- 🏢 **Building Models (.idf files)**:
+  - [`baseline_configured.idf`](./deliverables/baseline_configured.idf) - Un-controlled static baseline building
+  - [`small_office_configured.idf`](./deliverables/small_office_configured.idf) - SentinelAI dynamically controlled building
+- 📦 **Submission Archive**: [23BAI1265.zip](./deliverables/23BAI1265.zip)
+
+### 🎥 Demonstration Video
+https://github.com/APEXPRE123207/Sentinel_BMS_AI/raw/main/deliverables/Honeywell_Hackathon_Project_23BAI1265.mp4
+*(Note: GitHub natively supports playing .mp4 videos directly from the repository if you click the video link above. The URL above will render as a playable video when viewed on GitHub!)*
+
+---
+
 ## 🌟 Key Architectural Innovations (v2.0)
+
+![Architecture Diagram](./deliverables/Architecture_Diagram.png)
 
 SentinelAI transforms conventional static-schedule Building Management Systems into a self-healing, multi-objective autonomous cyber-physical platform:
 
@@ -31,7 +51,7 @@ SentinelAI transforms conventional static-schedule Building Management Systems i
 | **Phase 4** | **Equipment Health Engine (Stress, RUL, Anomaly)** | ✅ **Completed** |
 | **Phase 5** | **Live Analytics & Decision Dashboard (FastAPI + Plotly)** | ✅ **Completed** |
 | **Phase 6** | **Interactive Digital Twin, Cloud LLM, Streaming & HITL MCP** | ✅ **Completed** |
-| **Phase 7** | **Demo Scenario, Video & Presentation** | 📋 Planned |
+| **Phase 7** | **Demo Scenario, Video & Presentation** | ✅ **Completed** |
 
 ---
 
@@ -87,21 +107,9 @@ SentinelAI features native support for MCP tool calling:
 
 ---
 
-## 📦 Submission Deliverables
-
-The final submission materials can be found in the `deliverables/` folder, which includes:
-- 🏗️ **System Architecture Document**: [`ARCHITECTURE.md`](deliverables/ARCHITECTURE.md) detailing the MCP Tool Architecture, Prompt Strategies, and Context Compression.
-- 🏢 **Building Models (.idf files)**:
-  - `baseline_configured.idf` - Un-controlled static baseline building
-  - `small_office_configured.idf` - SentinelAI dynamically controlled building
-- 🎥 **PoC Demonstration Video**: (Pending upload)
-- 📊 **Presentation Slides (PPT)**: (Pending upload)
-
----
-
 ## 📁 Repository Structure
 
-```
+```text
 Sentinel_BMS_AI/
 ├── backend/
 │   ├── database/
@@ -141,6 +149,7 @@ Sentinel_BMS_AI/
 │   │       ├── app.js            # Dashboard logic, Plotly.js charts, and digital twin
 │   │       └── styles.css        # Premium dark design system
 │   └── run_loop.py               # Autonomous closed-loop orchestrator
+├── deliverables/                 # Presentation, Docs, and Video for Submission
 ├── tests/
 │   ├── test_closed_loop.py       # Integration tests
 │   ├── test_safety_rules.py      # 33 safety rule tests
