@@ -10,7 +10,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -32,15 +31,15 @@
 
             <div class="header-center-info">
                 <div class="weather-widget">
-                    <span class="weather-icon">❄️</span>
+                    <span class="weather-icon">☀️</span>
                     <div class="weather-details">
-                        <span class="weather-title">Chicago EPW Ambient</span>
-                        <span class="weather-value" id="outdoor-temp-text">19.5°C | 56% RH</span>
+                        <span class="weather-title">Local EPW Ambient</span>
+                        <span class="weather-value" id="outdoor-temp-text">--°C | --% RH</span>
                     </div>
                 </div>
                 <div class="timestep-widget">
                     <span class="timestep-label">Time of Day</span>
-                    <span class="timestep-value" id="current-step-text">02:30 (Step #10)</span>
+                    <span class="timestep-value" id="current-step-text">--:-- (Step #0)</span>
                 </div>
             </div>
 
@@ -53,6 +52,7 @@
                         <option value="20">20x (50ms)</option>
                     </select>
                 </div>
+                <button class="btn btn-primary" id="btn-config-modal">⚙️ Scenario Config</button>
                 <button class="btn btn-autoplay" id="btn-autoplay">▶ Play Day</button>
                 <button class="btn btn-secondary" id="btn-dual-step">⚡ Run Dual Step</button>
                 <button class="btn btn-primary" id="btn-run-step">▶ Execute Step</button>
@@ -64,6 +64,20 @@
         <!-- Main Dashboard Content (Narrative Flow) -->
         <main class="dashboard-grid">
 
+            <!-- 0. Digital Twin Floorplan (Canvas) -->
+            <section class="panel-section card-glass" id="section-digital-twin">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">🏢 Live Digital Twin — EnergyPlus Floorplan</h3>
+                        <p class="panel-subtitle">Real-time zone temperatures, PMV comfort coloring, occupant positions, and AI setpoint decisions</p>
+                    </div>
+                    <span class="badge badge-cyan">Canvas Engine</span>
+                </div>
+                <div class="digital-twin-wrapper">
+                    <canvas id="digital-twin-canvas" width="1100" height="420"></canvas>
+                </div>
+            </section>
+
             <!-- 1. KPI Vital Metrics Row (Glanceable Summary) -->
             <section class="metrics-row" id="section-kpis">
                 <div class="metric-card card-glow-amber">
@@ -71,8 +85,8 @@
                         <span class="card-title-sm">Energy & Power</span>
                         <span class="card-icon">⚡</span>
                     </div>
-                    <div class="metric-main-value text-amber" id="metric-energy">5.096 <span class="unit">kWh</span></div>
-                    <div class="metric-sub-text" id="metric-power">Demand: 20.38 kW | 2.29 kg CO₂</div>
+                    <div class="metric-main-value text-amber" id="metric-energy">0.000 <span class="unit">kWh</span></div>
+                    <div class="metric-sub-text" id="metric-power">Awaiting simulation start...</div>
                 </div>
 
                 <div class="metric-card card-glow-emerald">
@@ -80,7 +94,7 @@
                         <span class="card-title-sm">Thermal Comfort (PMV)</span>
                         <span class="card-icon">🌡️</span>
                     </div>
-                    <div class="metric-main-value text-emerald" id="metric-pmv">0.85 <span class="badge badge-neutral">COOL / ACCEP.</span></div>
+                    <div class="metric-main-value text-emerald" id="metric-pmv">0.00 <span class="badge badge-neutral">AWAITING</span></div>
                     <div class="metric-sub-text" id="metric-comfort-detail">Target: -0.5 ≤ PMV ≤ +0.5 (ASHRAE 55)</div>
                 </div>
 
@@ -89,8 +103,8 @@
                         <span class="card-title-sm">Equipment Health</span>
                         <span class="card-icon">🛡️</span>
                     </div>
-                    <div class="metric-main-value text-purple" id="metric-health">91.3% <span class="badge badge-success">HEALTHY</span></div>
-                    <div class="metric-sub-text" id="metric-health-detail">AHU: 98% | Chiller: 92% | Pump: 78%</div>
+                    <div class="metric-main-value text-purple" id="metric-health">--% <span class="badge badge-success">AWAITING</span></div>
+                    <div class="metric-sub-text" id="metric-health-detail">AHU: --% | Chiller: --% | Pump: --% | Fan: --%</div>
                 </div>
 
                 <div class="metric-card card-glow-amber">
@@ -98,10 +112,11 @@
                         <span class="card-title-sm">Empirical Baseline Improvement</span>
                         <span class="card-icon">📊</span>
                     </div>
-                    <div class="metric-main-value text-amber" id="metric-savings">+1.44 <span class="unit">PMV Delta</span></div>
-                    <div class="metric-sub-text" id="metric-savings-detail">Baseline PMV: -2.55 | AI PMV: -1.11</div>
+                    <div class="metric-main-value text-amber" id="metric-savings">+0.00 <span class="unit">PMV Delta</span></div>
+                    <div class="metric-sub-text" id="metric-savings-detail">Awaiting simulation start...</div>
                 </div>
             </section>
+
 
             <!-- 2. Day Timeline & Linked Event Log (The Story Replay) -->
             <section class="panel-section card-glass" id="section-story-replay">
@@ -177,57 +192,6 @@
                 </div>
             </section>
 
-            <!-- 3.5 Interactive Digital Twin -->
-            <section class="panel-section card-glass" id="section-digital-twin">
-                <div class="panel-header" style="justify-content: space-between;">
-                    <div>
-                        <h3 class="panel-title">🌐 Interactive Digital Twin</h3>
-                        <p class="panel-subtitle">Real-time thermal heatmap and equipment overlay. Click rooms for details.</p>
-                    </div>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <span style="font-size: 12px; color: #94a3b8;">Renderer:</span>
-                        <button class="btn btn-secondary" id="btn-toggle-renderer">Switch to 3D View</button>
-                    </div>
-                </div>
-                
-                <div style="display: flex; gap: 20px; position: relative;">
-                    <!-- Canvas Container -->
-                    <div id="twin-container" style="flex: 1; height: 350px; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative; overflow: hidden; border: 1px solid #1e293b;">
-                        <!-- SVG Fallback -->
-                        <svg id="twin-svg" width="100%" height="100%" style="display: block;">
-                            <defs>
-                                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e293b" stroke-width="0.5"/>
-                                </pattern>
-                            </defs>
-                            <rect width="100%" height="100%" fill="url(#grid)" />
-                            <g id="svg-rooms" transform="translate(50, 50)"></g>
-                        </svg>
-                        
-                        <!-- Three.js Canvas -->
-                        <div id="twin-3d" style="display: none; width: 100%; height: 100%;"></div>
-                        
-                        <!-- HTML Equipment Markers -->
-                        <div id="twin-equipment-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
-                    </div>
-                    
-                    <!-- Side Panel -->
-                    <div id="twin-side-panel" style="width: 250px; background: rgba(15, 23, 42, 0.8); border: 1px solid #1e293b; border-radius: 8px; padding: 15px; display: none; flex-direction: column; gap: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 5px;">
-                            <h4 id="panel-room-name" style="margin: 0; color: #e2e8f0; font-size: 14px;">Room Name</h4>
-                            <button id="btn-close-panel" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 16px;">×</button>
-                        </div>
-                        <div style="font-size: 12px; color: #cbd5e1; display: flex; flex-direction: column; gap: 8px;">
-                            <div><strong style="color: #94a3b8;">Temp:</strong> <span id="panel-temp">--</span>°C</div>
-                            <div><strong style="color: #94a3b8;">Target:</strong> <span id="panel-target">--</span>°C</div>
-                            <div><strong style="color: #94a3b8;">Humidity:</strong> <span id="panel-humidity">--</span>%</div>
-                            <div><strong style="color: #94a3b8;">Occupancy:</strong> <span id="panel-occ">--</span></div>
-                            <div><strong style="color: #94a3b8;">PMV:</strong> <span id="panel-pmv">--</span></div>
-                            <div><strong style="color: #94a3b8;">Airflow:</strong> <span id="panel-airflow">--</span> m³/s</div>
-                        </div>
-                    </div>
-                </div>
-            </section>
 
             <!-- 4. Agent Council 4-Perspective Reasoning Panel -->
             <section class="panel-section card-glass" id="section-council">
@@ -390,8 +354,60 @@
         </div>
     </div>
 
+    <!-- Scenario Config Modal -->
+    <div id="config-overlay" class="config-overlay hidden">
+        <div class="tour-modal config-modal">
+            <div class="tour-header" style="margin-bottom: 1rem;">
+                <h3 style="color: #f8fafc; font-size: 1.25rem;">⚙️ Scenario Configuration</h3>
+            </div>
+            <div class="tour-body" style="text-align: left;">
+                <p style="margin-bottom: 1.5rem; color: #94a3b8; font-size: 0.9rem;">Change simulation parameters. This will reset the current day's progress.</p>
+                
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: #f8fafc; font-size: 0.9rem;">Simulation Month</label>
+                    <select id="config-month" class="speed-dropdown" style="width: 100%; padding: 0.6rem; background: #0f1729; border: 1px solid #334155; color: #f8fafc; border-radius: 6px;">
+                        <option value="1">January (Cool)</option>
+                        <option value="4">April (Warm)</option>
+                        <option value="7" selected>July (Hot Summer)</option>
+                        <option value="10">October (Mild)</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: #f8fafc; font-size: 0.9rem;">Day of Week</label>
+                    <select id="config-day" class="speed-dropdown" style="width: 100%; padding: 0.6rem; background: #0f1729; border: 1px solid #334155; color: #f8fafc; border-radius: 6px;">
+                        <option value="Monday">Monday (Workday)</option>
+                        <option value="Tuesday" selected>Tuesday (Workday)</option>
+                        <option value="Wednesday">Wednesday (Workday)</option>
+                        <option value="Thursday">Thursday (Workday)</option>
+                        <option value="Friday">Friday (Workday)</option>
+                        <option value="Saturday">Saturday (Weekend - 0 Occupants)</option>
+                        <option value="Sunday">Sunday (Weekend - 0 Occupants)</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 2rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: #f8fafc; font-size: 0.9rem;">Base Occupancy Level</label>
+                    <select id="config-occ" class="speed-dropdown" style="width: 100%; padding: 0.6rem; background: #0f1729; border: 1px solid #334155; color: #f8fafc; border-radius: 6px;">
+                        <option value="4">Low (4 people)</option>
+                        <option value="8" selected>Medium (8 people)</option>
+                        <option value="15">High (15 people)</option>
+                        <option value="25">Max Capacity (25 people)</option>
+                    </select>
+                </div>
+                
+                <div class="tour-footer" style="display: flex; justify-content: flex-end; gap: 1rem;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('config-overlay').classList.add('hidden')">Cancel</button>
+                    <button class="btn btn-primary" id="btn-save-config">Save & Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Plotly via CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    
     <!-- Dashboard App Script -->
     <script src="/static/app.js"></script>
-    <script src="/static/digital_twin.js"></script>
 </body>
 </html>

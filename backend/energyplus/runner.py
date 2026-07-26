@@ -1,8 +1,6 @@
 """
 SentinelAI - EnergyPlus Interface (Phase 1 Integration Complete)
-Provides two simulation backends:
-1. SimulationEngine  - built-in multi-zone physics engine (fallback / testing).
-2. EnergyPlusRunner  - real EnergyPlus Python API integration via pyenergyplus.api.
+Provides the EnergyPlus-backed simulation interface used by the control loop.
 
 Both expose the same interface:
     step()           -> Dict[str, Any]   (advance simulation by one timestep)
@@ -36,6 +34,126 @@ def _add_energyplus_to_path() -> Optional[str]:
     return None
 
 _add_energyplus_to_path()
+
+
+class SimulationEngine:
+    """
+    Legacy deterministic simulator retained only for backward compatibility.
+    The public project path uses EnergyPlusRunner exclusively.
+    """
+
+    def __init__(self, is_baseline: bool = False):
+        self.is_baseline = is_baseline
+        self.timestep = 0
+        self.outdoor_temp = 25.0
+        self.outdoor_humidity = 50.0
+        self.grid_carbon_intensity = float(os.environ.get("SENTINEL_GRID_CARBON_INTENSITY", "0.45"))
+
+        self.zones = {
+            "Office": {
+                "temperature": 23.0,
+                "target_setpoint": 20.0 if self.is_baseline else 22.0,
+                "humidity": 50.0,
+                "co2": 420.0,
+                "pmv": 0.2,
+                "occupancy": 8,
+                "airflow": 1.0 if self.is_baseline else 0.5,
+                "lighting_level": 1.0 if self.is_baseline else 0.8,
+            },
+            "ConferenceRoom": {
+                "temperature": 24.5,
+                "target_setpoint": 20.0 if self.is_baseline else 22.0,
+                "humidity": 55.0,
+                "co2": 750.0,
+                "pmv": 0.6,
+                "occupancy": 15,
+                "airflow": 1.0 if self.is_baseline else 0.6,
+                "lighting_level": 1.0,
+            },
+            "Lobby": {
+                "temperature": 23.5,
+                "target_setpoint": 20.0 if self.is_baseline else 23.0,
+                "humidity": 48.0,
+                "co2": 450.0,
+                "pmv": 0.3,
+                "occupancy": 4,
+                "airflow": 1.0 if self.is_baseline else 0.4,
+                "lighting_level": 1.0 if self.is_baseline else 0.6,
+            },
+        }
+        self.equipment = {
+            "ahu_status": "NORMAL",
+            "ahu_health": 98.0,
+            "pump_status": "NORMAL",
+            "pump_health": 78.0,
+            "fan_status": "NORMAL",
+            "fan_health": 95.0,
+            "chiller_status": "NORMAL",
+            "chiller_health": 92.0,
+            "total_power_kw": 24.6 if self.is_baseline else 15.2,
+            "cumulative_runtime_hours": 145.0,
+            "cycling_count": 12,
+        }
+        self.total_energy_kwh = 0.0
+        self.carbon_emissions_kg = 0.0
+
+    def start(self):
+        return None
+
+    def stop(self):
+        return None
+
+    def apply_actuators(self, setpoints, airflows, lighting, ventilation=None, pump_switch=False):
+        for z_id in self.zones:
+            if z_id in setpoints:
+                self.zones[z_id]["target_setpoint"] = setpoints[z_id]
+            if z_id in airflows:
+                self.zones[z_id]["airflow"] = airflows[z_id]
+            if z_id in lighting:
+                self.zones[z_id]["lighting_level"] = lighting[z_id]
+
+        if pump_switch:
+            self.equipment["pump_health"] = min(100.0, self.equipment["pump_health"] + 15.0)
+            self.equipment["pump_status"] = "REGENERATED"
+
+    def step(self) -> Dict[str, Any]:
+        self.timestep += 1
+        hour = (self.timestep * 0.25) % 24
+        self.outdoor_temp = 24.0 + 5.0 * math.sin((hour - 8) * math.pi / 12)
+        self.outdoor_humidity = 50.0 + 10.0 * math.cos(hour * math.pi / 12)
+
+        total_power = 0.0
+        for z_id, z in self.zones.items():
+            heat_gain = (self.outdoor_temp - z["temperature"]) * 0.08 + z["occupancy"] * 0.12 + z["lighting_level"] * 0.5
+            cooling = z["airflow"] * (z["temperature"] - (z["target_setpoint"] - 2.0)) * 0.35
+            z["temperature"] = round(z["temperature"] + heat_gain - cooling, 2)
+            z["pmv"] = round(max(-3.0, min(3.0, (z["temperature"] - 22.0) * 0.35 + (z["occupancy"] - 5) * 0.02)), 2)
+            z["co2"] = round(max(400.0, z["co2"] + z["occupancy"] * 12.0 - z["airflow"] * 150.0), 1)
+
+            chiller_work = z["airflow"] * max(0, self.outdoor_temp - (z["target_setpoint"] - 2.0)) * 0.5
+            total_power += (z["airflow"] * 3.5) + chiller_work
+
+        total_power += 5.0
+        self.equipment["total_power_kw"] = round(total_power, 2)
+        self.equipment["cumulative_runtime_hours"] += 0.25
+        if total_power > 25.0:
+            self.equipment["pump_health"] = max(0.0, self.equipment["pump_health"] - 0.2)
+            self.equipment["fan_health"] = max(0.0, self.equipment["fan_health"] - 0.1)
+
+        step_energy = total_power * 0.25
+        self.total_energy_kwh = round(self.total_energy_kwh + step_energy, 3)
+        self.carbon_emissions_kg = round(self.carbon_emissions_kg + step_energy * self.grid_carbon_intensity, 3)
+
+        return {
+            "timestep": self.timestep,
+            "outdoor_temp": round(self.outdoor_temp, 2),
+            "outdoor_humidity": round(self.outdoor_humidity, 2),
+            "grid_carbon_intensity": self.grid_carbon_intensity,
+            "zones": self.zones,
+            "equipment": self.equipment,
+            "total_energy_kwh": self.total_energy_kwh,
+            "carbon_emissions_kg": self.carbon_emissions_kg,
+        }
 
 
 # =============================================================================
@@ -153,7 +271,7 @@ class EnergyPlusRunner:
     """
     Real EnergyPlus simulation runner using pyenergyplus.api.
     Runs EnergyPlus in a background thread and exposes a step() / apply_actuators()
-    interface identical to SimulationEngine, so run_loop.py needs no changes.
+    interface used by the control loop.
 
     How it works:
       - EnergyPlus runs in a daemon thread.
@@ -167,6 +285,12 @@ class EnergyPlusRunner:
         "Office":         "West Zone",
         "ConferenceRoom": "EAST ZONE",
         "Lobby":          "NORTH ZONE",
+    }
+
+    ZONE_MAX_OCCUPANCY: Dict[str, int] = {
+        "Office": 8,
+        "ConferenceRoom": 15,
+        "Lobby": 2,
     }
 
     def __init__(
@@ -189,9 +313,11 @@ class EnergyPlusRunner:
         self._timestep = 0
         self._cumulative_energy_kwh = 0.0
         self._cumulative_carbon_kg = 0.0
+        self._grid_carbon_intensity = float(os.environ.get("SENTINEL_GRID_CARBON_INTENSITY", "0.45"))
         self._cumulative_runtime_hours = 0.0
         self._cycling_count = 0
         self._prev_power_kw = 0.0
+        self._occupancy_start_hour = float(os.environ.get("SENTINEL_START_HOUR", "6.75"))
 
         # Equipment health (tracked by SentinelAI, not by EnergyPlus)
         self._equipment_health = {
@@ -307,14 +433,19 @@ class EnergyPlusRunner:
     # Private — EnergyPlus thread
     # ------------------------------------------------------------------
     def _run_ep(self):
+        output_dir = os.path.join(os.path.dirname(self.idf_path), "ep_output")
+        os.makedirs(output_dir, exist_ok=True)
         args = [
+            "-w", self.epw_path,
+            "-d", output_dir,
             self.idf_path,
-            "--weather", self.epw_path,
-            "--output-directory", os.path.join(os.path.dirname(self.idf_path), "ep_output"),
         ]
-        exit_code = self._api.runtime.run_energyplus(self._ep_state, args)
-        if exit_code != 0:
-            logger.error(f"EnergyPlus exited with code {exit_code}")
+        try:
+            exit_code = self._api.runtime.run_energyplus(self._ep_state, args)
+            if exit_code != 0:
+                logger.error(f"EnergyPlus exited with code {exit_code}")
+        except OSError as exc:
+            logger.info(f"EnergyPlus runtime ended: {exc}")
         self._running = False
 
     def _timestep_callback(self, ep_state):
@@ -327,6 +458,26 @@ class EnergyPlusRunner:
             return
             
         self._timestep += 1
+        sim_hour = (self._occupancy_start_hour + (self._timestep - 1) * 0.25) % 24.0
+
+        def _occupancy_fraction(hour: float) -> float:
+            if hour < 6.0:
+                return 0.0
+            if hour < 7.0:
+                return 0.10
+            if hour < 8.0:
+                return 0.50
+            if hour < 12.0:
+                return 1.00
+            if hour < 13.0:
+                return 0.50
+            if hour < 16.0:
+                return 1.00
+            if hour < 17.0:
+                return 0.50
+            if hour < 18.0:
+                return 0.10
+            return 0.0
 
         # ── Apply pending actuator commands ──────────────────────────
         with self._actuator_lock:
@@ -364,7 +515,11 @@ class EnergyPlusRunner:
         for sentinel_zone, ep_zone in self.ZONE_MAP.items():
             def _get(var_type, var_key, unit=""):
                 try:
+                    # TEACHING MOMENT: How EnergyPlus variables enter Python
+                    # 1. The IDF file must explicitly declare "Output:Variable" for the data we want.
+                    # 2. We ask the C API for a "handle" (an integer memory address) to that variable for a specific zone.
                     handle = api.exchange.get_variable_handle(ep_state, var_type, var_key)
+                    # 3. We use that handle to efficiently read the current float value from the C engine memory.
                     return api.exchange.get_variable_value(ep_state, handle) if handle != -1 else 0.0
                 except Exception:
                     return 0.0
@@ -374,8 +529,13 @@ class EnergyPlusRunner:
             co2 = _get("Zone Air CO2 Concentration", ep_zone)
             people = _get("Zone People Occupant Count", ep_zone)
 
+            max_people = self.ZONE_MAX_OCCUPANCY.get(sentinel_zone, int(round(people)) if people else 0)
+            schedule_people = int(round(max_people * _occupancy_fraction(sim_hour)))
+            if schedule_people > 0:
+                schedule_people = max(1, schedule_people)
+
             # PMV approximation (EnergyPlus may not expose it directly via API)
-            pmv = round(max(-3.0, min(3.0, (temp - 22.0) * 0.35 + (people - 5) * 0.02)), 2)
+            pmv = round(max(-3.0, min(3.0, (temp - 22.0) * 0.35 + (schedule_people - 5) * 0.02)), 2)
 
             zones_data[sentinel_zone] = {
                 "temperature": round(temp, 2),
@@ -383,7 +543,8 @@ class EnergyPlusRunner:
                 "humidity": round(humidity, 1),
                 "co2": round(co2, 1),
                 "pmv": pmv,
-                "occupancy": int(people),
+                "occupancy": schedule_people,
+                "occupancy_raw": int(people),
                 "airflow": cmds.get("airflows", {}).get(sentinel_zone, 0.5),
                 "lighting_level": cmds.get("lighting", {}).get(sentinel_zone, 0.8),
             }
@@ -422,7 +583,7 @@ class EnergyPlusRunner:
         step_energy = max(0.0, total_power_kw) * 0.25          # 15-min timestep → kWh
         self._cumulative_energy_kwh += step_energy
 
-        self._cumulative_carbon_kg += step_energy * 0.45
+        self._cumulative_carbon_kg += step_energy * self._grid_carbon_intensity
         self._cumulative_runtime_hours += 0.25
 
         # Detect cycling (large power swings)
@@ -447,6 +608,7 @@ class EnergyPlusRunner:
             "timestep": self._timestep,
             "outdoor_temp": round(outdoor_temp, 2),
             "outdoor_humidity": round(outdoor_humidity, 1),
+            "grid_carbon_intensity": self._grid_carbon_intensity,
             "zones": zones_data,
             "equipment": equipment_data,
             "total_energy_kwh": round(self._cumulative_energy_kwh, 3),

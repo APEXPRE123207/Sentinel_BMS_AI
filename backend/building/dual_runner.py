@@ -31,7 +31,7 @@ class DualSimulationRunner:
         self.db_path = db_path
         self.db_manager = DatabaseManager(db_path) if db_path else DatabaseManager()
         self.comparator = BaselineComparator(self.db_manager)
-        self.use_energyplus = use_energyplus
+        self.use_energyplus = True
         self.llm_api_url = llm_api_url
 
     def run_dual_simulation(self, num_steps: int = 10) -> List[Dict[str, Any]]:
@@ -45,7 +45,6 @@ class DualSimulationRunner:
             db_manager=self.db_manager,
             idf_path=_BASELINE_IDF,
             epw_path=_WEATHER_EPW,
-            use_energyplus=self.use_energyplus
         )
 
         try:
@@ -59,7 +58,6 @@ class DualSimulationRunner:
         ai_loop = SentinelAIControlLoop(
             db_path=self.db_path,
             llm_api_url=self.llm_api_url,
-            use_energyplus=self.use_energyplus,
             idf_path=_SENTINEL_IDF,
             epw_path=_WEATHER_EPW
         )
@@ -92,8 +90,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="SentinelAI Dual Simulation Runner (Baseline vs AI)")
     parser.add_argument("--steps", type=int, default=10, help="Number of dual simulation steps")
-    parser.add_argument("--no-energyplus", action="store_true", help="Use built-in physics engine instead of EnergyPlus")
     args = parser.parse_args()
 
-    runner = DualSimulationRunner(use_energyplus=not args.no_energyplus)
+    runner = DualSimulationRunner()
     runner.run_dual_simulation(args.steps)

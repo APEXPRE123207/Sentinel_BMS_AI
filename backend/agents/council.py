@@ -32,21 +32,9 @@ You MUST respond strictly with a valid JSON object adhering to this schema:
   "carbon_reasoning": "Explanation of carbon emission reduction decision",
   "health_reasoning": "Explanation of equipment health protection decision",
   "recommended_action": {
-    "zone_setpoints": {
-      "Office": float,
-      "ConferenceRoom": float,
-      "Lobby": float
-    },
-    "zone_airflows": {
-      "Office": float,
-      "ConferenceRoom": float,
-      "Lobby": float
-    },
-    "zone_lighting": {
-      "Office": float,
-      "ConferenceRoom": float,
-      "Lobby": float
-    },
+        "zone_setpoints": { "<zone_id>": float, "...": float },
+        "zone_airflows": { "<zone_id>": float, "...": float },
+        "zone_lighting": { "<zone_id>": float, "...": float },
     "ventilation_rate": float,
     "pump_switch_active": boolean
   }
@@ -60,11 +48,14 @@ class AgentCouncil:
         self.api_url = api_url
         self.model_name = model_name
         
-        import dotenv
+        try:
+            import dotenv
+        except ModuleNotFoundError:
+            dotenv = None
         # Load API key and URL from .env if present
         env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
         self.is_ollama_cloud = False
-        if os.path.exists(env_path):
+        if dotenv and os.path.exists(env_path):
             dotenv.load_dotenv(env_path)
             
             ollama_key = os.environ.get("OLLAMA_API_KEY")
@@ -101,6 +92,9 @@ class AgentCouncil:
         if rejection_feedback:
             user_prompt += f"\n[CRITICAL SAFETY FEEDBACK FROM PREVIOUS ATTEMPT]:\n{rejection_feedback}\nAdjust setpoints to satisfy safety limits!\n"
 
+        if os.environ.get("SENTINEL_SKIP_REMOTE_LLM", "").lower() in {"1", "true", "yes"}:
+            return self._deterministic_council_engine(context, rejection_feedback)
+
         if self.api_key and self.api_url:
             try:
                 decision = self._call_llm_api(user_prompt)
@@ -112,7 +106,7 @@ class AgentCouncil:
         return self._deterministic_council_engine(context, rejection_feedback)
 
     def _call_llm_api(self, user_prompt: str) -> Optional[AgentCouncilDecision]:
-        system_instruction = "You are the SentinelAI Agent Council, an autonomous Building Management Intelligence engine for building automation.\nYou must analyze the building's current state and historical trends from 4 perspectives:\n1. ENERGY AGENT: Minimize electrical energy consumption and peak load.\n2. COMFORT AGENT: Maintain occupant thermal comfort (PMV near 0, temperature 20-24°C, indoor air quality).\n3. CARBON AGENT: Reduce carbon emissions using real-time grid carbon intensity.\n4. HEALTH AGENT: Protect equipment (pumps, fans, chillers, AHU) from excessive cycling, thermal stress, or degradation.\n\nYou MUST respond strictly with a valid JSON object adhering to this schema:\n{\n  \"energy_reasoning\": \"Explanation of energy optimization decision\",\n  \"comfort_reasoning\": \"Explanation of comfort maintenance decision\",\n  \"carbon_reasoning\": \"Explanation of carbon emission reduction decision\",\n  \"health_reasoning\": \"Explanation of equipment health protection decision\",\n  \"recommended_action\": {\n    \"zone_setpoints\": {\n      \"Office\": float,\n      \"ConferenceRoom\": float,\n      \"Lobby\": float\n    },\n    \"zone_airflows\": {\n      \"Office\": float,\n      \"ConferenceRoom\": float,\n      \"Lobby\": float\n    },\n    \"zone_lighting\": {\n      \"Office\": float,\n      \"ConferenceRoom\": float,\n      \"Lobby\": float\n    },\n    \"ventilation_rate\": float,\n    \"pump_switch_active\": boolean\n  }\n}\nDo not include any extra text outside the JSON object."
+        system_instruction = COUNCIL_SYSTEM_PROMPT
         
         is_gemini = "generativelanguage.googleapis.com" in self.api_url
         headers = {"Content-Type": "application/json"}
@@ -157,7 +151,7 @@ class AgentCouncil:
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
 
-        with urllib.request.urlopen(req, timeout=30, context=context) as response:
+        with urllib.request.urlopen(req, timeout=5, context=context) as response:
             res_body = response.read().decode("utf-8")
             res_json = json.loads(res_body)
             

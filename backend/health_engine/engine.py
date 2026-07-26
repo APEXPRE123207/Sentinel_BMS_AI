@@ -28,10 +28,10 @@ class EquipmentHealthEngine:
     def __init__(self):
         # Current asset health state (percentage 0.0 to 100.0)
         self.health_scores: Dict[EquipmentType, float] = {
-            EquipmentType.AHU: 98.0,
-            EquipmentType.CHILLER: 92.0,
-            EquipmentType.PUMP: 78.0,
-            EquipmentType.FAN: 95.0,
+            EquipmentType.AHU: 100.0,
+            EquipmentType.CHILLER: 100.0,
+            EquipmentType.PUMP: 100.0,
+            EquipmentType.FAN: 100.0,
         }
 
         self.statuses: Dict[EquipmentType, str] = {
@@ -104,7 +104,9 @@ class EquipmentHealthEngine:
             rul_hours = round(max(0.0, (nominal_hours - runtime_hours) * (h_score / 100.0) / stress_factor), 1)
 
             # 3. Anomaly Detection
-            eq_anomalies = self._detect_anomalies(eq, h_score, power_kw, cycling_count, overloads)
+            eq_anomalies: List[AnomalyDetectionResult] = []
+            if eq == EquipmentType.AHU:
+                eq_anomalies.extend(self._detect_anomalies(eq, h_score, power_kw, cycling_count, overloads))
             all_anomalies.extend(eq_anomalies)
 
             # 4. Predictive Maintenance Alerts
@@ -136,7 +138,10 @@ class EquipmentHealthEngine:
             overall_health_score=round(overall_health, 1),
             assets=asset_reports,
             building_anomalies=all_anomalies,
-            active_alerts=all_alerts
+            active_alerts=all_alerts,
+            total_power_kw=round(power_kw, 2),
+            cumulative_runtime_hours=round(runtime_hours, 2),
+            cycling_count=cycling_count
         )
         self.latest_report = report
         return report

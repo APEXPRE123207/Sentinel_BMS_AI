@@ -12,7 +12,18 @@ from typing import Dict, Any, List, Optional
 from ..database.models import (
     ActionRecommendation, ValidationResult, BuildingState, RuleViolation
 )
-from .rules import SafetyRule, get_default_rules
+from .rules import (
+    SafetyRule,
+    SetpointRangeRule,
+    AirflowRangeRule,
+    LightingRangeRule,
+    SetpointRateOfChangeRule,
+    PMVComfortRule,
+    CO2VentilationRule,
+    ChillerMinRuntimeRule,
+    FanStaticPressureRule,
+    PumpHealthRule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +42,17 @@ class SafetyValidator:
         if rules is not None:
             self.rules = rules
         else:
-            self.rules = get_default_rules()
+            self.rules = [
+                SetpointRangeRule(min_c=min_setpoint_c, max_c=max_setpoint_c),
+                AirflowRangeRule(min_flow=min_airflow, max_flow=max_airflow),
+                LightingRangeRule(),
+                SetpointRateOfChangeRule(max_change_per_step=max_setpoint_change_per_step),
+                PMVComfortRule(pmv_lower=-0.5, pmv_upper=0.5),
+                CO2VentilationRule(co2_threshold_ppm=1000.0, min_airflow_high_co2=0.4),
+                ChillerMinRuntimeRule(),
+                FanStaticPressureRule(fan_health_threshold=70.0, max_airflow_degraded=0.85),
+                PumpHealthRule(critical_health_threshold=50.0),
+            ]
 
         self.last_known_good_action: ActionRecommendation = self._default_lkg_action()
 

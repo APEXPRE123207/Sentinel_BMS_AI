@@ -143,6 +143,8 @@ body {
     display: flex;
     align-items: center;
     gap: 0.6rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .speed-selector-group {
@@ -208,6 +210,7 @@ body {
     cursor: pointer;
     border: none;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .btn-primary {
@@ -773,4 +776,48 @@ body {
     color: var(--text-muted);
     font-size: 0.72rem;
     margin-top: 0.1rem;
+}
+
+/* ── Digital Twin Canvas ────────────────────────────────────────── */
+.digital-twin-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0;
+}
+
+#digital-twin-canvas {
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: #0f1729;
+    width: 100%;
+    max-width: 1100px;
+    height: auto;
+    aspect-ratio: 1100 / 420;
+}
+
+.config-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.config-overlay.hidden {
+    display: none !important;
+}
+
+.config-modal {
+    background: #1e293b;
+    border: 1px solid #38bdf8;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 450px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.hidden {
+    display: none !important;
 }

@@ -130,6 +130,15 @@ class DatabaseManager:
 
             conn.commit()
 
+    def reset_db(self):
+        """Delete and recreate the SQLite database file."""
+        if os.path.exists(self.db_path):
+            try:
+                os.remove(self.db_path)
+            except OSError:
+                pass
+        self._init_db()
+
     def log_building_state(self, state: BuildingState):
         zones_data = {
             z_id: {
@@ -261,7 +270,9 @@ class DatabaseManager:
                 pump.status if pump else "NORMAL",
                 fan.status if fan else "NORMAL",
                 chiller.status if chiller else "NORMAL",
-                0.0, 0.0, 0
+                getattr(report, "total_power_kw", 0.0),
+                getattr(report, "cumulative_runtime_hours", 0.0),
+                getattr(report, "cycling_count", 0)
             ))
             conn.commit()
 
@@ -277,9 +288,6 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM BaselineMetrics WHERE timestep = ? ORDER BY id DESC LIMIT 1;", (timestep,))
             row = cursor.fetchone()
-            if not row:
-                cursor.execute("SELECT * FROM BaselineMetrics ORDER BY ABS(timestep - ?) ASC LIMIT 1;", (timestep,))
-                row = cursor.fetchone()
             return dict(row) if row else None
 
 

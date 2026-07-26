@@ -24,17 +24,19 @@ class BaselineSimulationRunner:
         db_manager: DatabaseManager,
         idf_path: str = _BASELINE_IDF,
         epw_path: str = _WEATHER_EPW,
-        use_energyplus: bool = True
+        use_energyplus: bool = True,
     ):
         self.db_manager = db_manager
-        self.use_energyplus = use_energyplus
+        self.use_energyplus = True
 
-        if use_energyplus and os.path.exists(idf_path) and os.path.exists(epw_path):
-            self.runner = EnergyPlusRunner(idf_path=idf_path, epw_path=epw_path)
-            self.runner.start()
-            logger.info(f"Baseline initialized with real EnergyPlus ({idf_path})")
-        else:
-            raise NotImplementedError("The mock physics engine has been removed. You must use use_energyplus=True and provide valid idf/epw paths.")
+        if not os.path.exists(idf_path):
+            raise FileNotFoundError(f"Baseline IDF not found: {idf_path}")
+        if not os.path.exists(epw_path):
+            raise FileNotFoundError(f"Weather EPW not found: {epw_path}")
+
+        self.runner = EnergyPlusRunner(idf_path=idf_path, epw_path=epw_path)
+        self.runner.start()
+        logger.info(f"Baseline initialized with real EnergyPlus ({idf_path})")
 
     def run_step(self) -> Dict[str, Any]:
         """

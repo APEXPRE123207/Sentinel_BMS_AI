@@ -4,6 +4,7 @@ Acts as the single source of truth for the building state.
 Reads building telemetry, zone states, weather, and equipment metrics,
 stores them to SQLite, and supplies the unified state object downstream.
 """
+import os
 import time
 from typing import Dict, Any, Optional
 from ..database.models import BuildingState, ZoneState, EquipmentTelemetry
@@ -21,7 +22,7 @@ class StateManager:
         outdoor_humidity: float,
         zones_data: Dict[str, Dict[str, Any]],
         equipment_data: Dict[str, Any],
-        grid_carbon_intensity: float = 0.45,
+        grid_carbon_intensity: Optional[float] = None,
         total_energy_kwh: float = 0.0,
         carbon_emissions_kg: float = 0.0
     ) -> BuildingState:
@@ -57,12 +58,16 @@ class StateManager:
             cycling_count=equipment_data.get("cycling_count", 4)
         )
 
+        resolved_carbon_intensity = grid_carbon_intensity
+        if resolved_carbon_intensity is None:
+            resolved_carbon_intensity = float(os.environ.get("SENTINEL_GRID_CARBON_INTENSITY", "0.45"))
+
         state = BuildingState(
             timestamp=time.time(),
             timestep=timestep,
             outdoor_temp=outdoor_temp,
             outdoor_humidity=outdoor_humidity,
-            grid_carbon_intensity=grid_carbon_intensity,
+            grid_carbon_intensity=resolved_carbon_intensity,
             zones=zones,
             telemetry=telemetry,
             total_energy_kwh=total_energy_kwh,

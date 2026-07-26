@@ -15,6 +15,7 @@ numpy>=1.24.0
 # Visualization & Dashboard (Plotly + Streamlit / React Backend)
 plotly>=5.15.0
 streamlit>=1.25.0
+pygame>=2.5.0
 
 # HTTP & MCP Tool Client
 httpx>=0.24.0

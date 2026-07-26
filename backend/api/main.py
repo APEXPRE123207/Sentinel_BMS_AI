@@ -25,9 +25,10 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global control_loop
-    control_loop = SentinelAIControlLoop(db_path=db_manager.db_path, use_energyplus=True)
-    logger.info("FastAPI Backend Service initialized.")
+    # Do NOT create control_loop here — it starts EnergyPlus which blocks.
+    # Instead, lazy-initialize on first /api/control/step call.
+    logger.info("FastAPI Backend Service initialized. Dashboard ready at http://127.0.0.1:8000")
+    logger.info("Click '▶ Execute Step' or '▶ Play Day' in the dashboard to start the simulation.")
     yield
 
 app = FastAPI(
@@ -45,6 +46,50 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Configuration Endpoint ──
+from pydantic import BaseModel
+class ConfigUpdate(BaseModel):
+    month: int
+    day_of_week: str
+    occupants: int
+
+@app.post("/api/config")
+def update_config(config: ConfigUpdate):
+    """Updates run_config.json with new parameters and resets the simulation."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(here, "..", "..", "run_config.json")
+    
+    current_cfg = {}
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            current_cfg = json.load(f)
+            
+    if "simulation_start_date" not in current_cfg:
+        current_cfg["simulation_start_date"] = {"day": 7}
+    current_cfg["simulation_start_date"]["month"] = config.month
+    current_cfg["day_of_week"] = config.day_of_week
+    
+    if "occupant_counts" not in current_cfg:
+        current_cfg["occupant_counts"] = {}
+    current_cfg["occupant_counts"]["Office"] = config.occupants
+    current_cfg["occupant_counts"]["ConferenceRoom"] = config.occupants * 2
+    current_cfg["occupant_counts"]["Lobby"] = max(2, int(config.occupants / 4))
+    
+    with open(config_path, "w") as f:
+        json.dump(current_cfg, f, indent=4)
+        
+    global control_loop
+    if control_loop:
+        try:
+            if hasattr(control_loop, 'simulator') and control_loop.simulator:
+                control_loop.simulator.stop()
+        except:
+            pass
+        control_loop = None
+        db_manager.reset_db()
+        
+    return {"status": "success"}
 
 # Instantiate Database & Control Loop Engine
 db_manager = DatabaseManager()
@@ -183,29 +228,37 @@ def get_latest_health():
     except Exception:
         health_data = None
     if not health_data:
+        return {"status": "NO_DATA", "message": "No equipment health report recorded yet."}
+
+    def _asset_payload(health: float, status: Optional[str], power_kw: float, runtime_hours: float, cycling_count: int, nominal_life_hours: float):
+        resolved_status = status or ("CRITICAL" if health < 40 else "DEGRADED" if health < 75 else "NORMAL")
+        stress_index = round((runtime_hours * 0.001) + (cycling_count * 0.2) + (1.0 if power_kw > 25.0 else 0.0) * 0.5, 2)
+        stress_factor = 1.0 + (0.1 * stress_index)
+        rul_hours = round(max(0.0, (nominal_life_hours - runtime_hours) * (health / 100.0) / stress_factor), 1)
         return {
-            "overall_health_score": 91.3,
-            "status": "NORMAL",
-            "assets": {
-                "AHU": {"health_score": 98.0, "status": "NORMAL", "stress_index": 0.5, "rul_hours": 49000.0},
-                "CHILLER": {"health_score": 92.0, "status": "NORMAL", "stress_index": 1.2, "rul_hours": 55000.0},
-                "PUMP": {"health_score": 78.0, "status": "DEGRADED", "stress_index": 2.1, "rul_hours": 27000.0},
-                "FAN": {"health_score": 95.0, "status": "NORMAL", "stress_index": 0.8, "rul_hours": 38000.0}
-            },
-            "active_alerts": []
+            "health_score": round(health, 1),
+            "status": resolved_status,
+            "stress_index": stress_index,
+            "rul_hours": rul_hours,
         }
-    
-    p_health = health_data.get("pump_health", 78.0)
-    p_status = health_data.get("pump_status", "DEGRADED" if p_health < 80 else "NORMAL")
+
+    p_health = health_data.get("pump_health", 0.0)
+    c_health = health_data.get("chiller_health", 0.0)
+    a_health = health_data.get("ahu_health", 0.0)
+    f_health = health_data.get("fan_health", 0.0)
+    power_kw = health_data.get("total_power_kw", 0.0)
+    runtime_hours = health_data.get("cumulative_runtime_hours", 0.0)
+    cycling_count = health_data.get("cycling_count", 0)
+    overall = round((a_health + c_health + p_health + f_health) / 4.0, 1)
     
     return {
-        "overall_health_score": round((health_data.get("ahu_health", 98) + health_data.get("chiller_health", 92) + p_health + health_data.get("fan_health", 95)) / 4.0, 1),
-        "status": "NORMAL",
+        "overall_health_score": overall,
+        "status": "CRITICAL" if overall < 40 else "DEGRADED" if overall < 75 else "NORMAL",
         "assets": {
-            "AHU": {"health_score": health_data.get("ahu_health", 98.0), "status": health_data.get("ahu_status", "NORMAL"), "stress_index": 0.5, "rul_hours": 49000.0},
-            "CHILLER": {"health_score": health_data.get("chiller_health", 92.0), "status": health_data.get("chiller_status", "NORMAL"), "stress_index": 1.2, "rul_hours": 55000.0},
-            "PUMP": {"health_score": p_health, "status": p_status, "stress_index": 2.1, "rul_hours": 27000.0},
-            "FAN": {"health_score": health_data.get("fan_health", 95.0), "status": health_data.get("fan_status", "NORMAL"), "stress_index": 0.8, "rul_hours": 38000.0}
+            "AHU": _asset_payload(a_health, health_data.get("ahu_status"), power_kw, runtime_hours, cycling_count, 50000.0),
+            "CHILLER": _asset_payload(c_health, health_data.get("chiller_status"), power_kw, runtime_hours, cycling_count, 60000.0),
+            "PUMP": _asset_payload(p_health, health_data.get("pump_status"), power_kw, runtime_hours, cycling_count, 35000.0),
+            "FAN": _asset_payload(f_health, health_data.get("fan_status"), power_kw, runtime_hours, cycling_count, 40000.0)
         },
         "active_alerts": []
     }
@@ -234,15 +287,18 @@ def get_latest_comparison():
             ai_d = dict(ai_row)
             b_d = db_manager.get_latest_baseline_metrics(ai_d["timestep"]) or {}
 
+            baseline_pmv = b_d.get("avg_pmv", ai_d.get("avg_pmv", 0.0))
+            ai_pmv = ai_d.get("avg_pmv", 0.0)
+
             return {
                 "timestep": ai_d["timestep"],
                 "energy_saved_pct": ai_d.get("energy_saved_pct", 0.0),
                 "carbon_reduced_pct": ai_d.get("carbon_reduced_pct", 0.0),
-                "comfort_improvement": 1.437,
+                "comfort_improvement": round(abs(baseline_pmv) - abs(ai_pmv), 3),
                 "baseline_energy_kwh": b_d.get("total_energy_kwh", ai_d["total_energy_kwh"]),
                 "ai_energy_kwh": ai_d["total_energy_kwh"],
-                "baseline_pmv": b_d.get("avg_pmv", -2.55),
-                "ai_pmv": ai_d.get("avg_pmv", -1.11)
+                "baseline_pmv": baseline_pmv,
+                "ai_pmv": ai_pmv
             }
     except Exception as e:
         logger.warning(f"Comparison query failed: {e}")
@@ -319,17 +375,7 @@ def reset_database():
     dual_runner = None
     baseline_runner = None
 
-    # 2. DELETE THE SQLITE FILE
-    db_path = db_manager.db_path
-    if os.path.exists(db_path):
-        try:
-            os.remove(db_path)
-            logger.info(f"Physically deleted database file at {db_path}")
-        except Exception as e:
-            logger.warning(f"Failed to delete DB file (it may be locked): {e}")
-
-    # Re-initialize the database manager to recreate tables
-    db_manager._init_db()
+    db_manager.reset_db()
 
     return {"status": "SUCCESS", "message": "Database file permanently deleted and recreated cleanly"}
 

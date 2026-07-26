@@ -3,8 +3,7 @@ SentinelAI - Closed Loop Control Runner
 Orchestrates the complete closed-loop autonomous control cycle:
 Observe -> State Manager -> Rolling Context Builder -> Agent Council -> Safety Validator -> Forward Controller -> Execute -> DB Log.
 
-Set use_energyplus=True to connect to the real EnergyPlus simulation (D:\\EnergyPlus must be installed).
-Set use_energyplus=False (default) to use the built-in multi-zone physics engine for fast testing.
+EnergyPlus is the only supported simulation backend.
 """
 import time
 import logging
@@ -17,6 +16,14 @@ from .validator.safety_validator import SafetyValidator
 from .controller.forward_controller import ForwardController
 from .health_engine.engine import EquipmentHealthEngine
 from .energyplus.runner import EnergyPlusRunner
+# Pygame Digital Twin removed — visualization is now handled by the in-browser Canvas
+try:
+    from .building.idf_modifier import configure_idf
+except ModuleNotFoundError:
+    def configure_idf():
+        return None
+import json
+import os
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("SentinelAI")
@@ -27,7 +34,7 @@ class SentinelAIControlLoop:
         db_path: Optional[str] = None,
         llm_api_url: Optional[str] = None,
         max_retries: int = 1,
-        use_energyplus: bool = False,
+        use_energyplus: bool = True,
         idf_path: Optional[str] = None,
         epw_path: Optional[str] = None,
     ):
@@ -38,36 +45,60 @@ class SentinelAIControlLoop:
         self.validator = SafetyValidator()
         self.health_engine = EquipmentHealthEngine()
         self.max_retries = max_retries
-        self.use_energyplus = use_energyplus
+        self.use_energyplus = True
+        self.control_step = 0
 
-        if use_energyplus:
-            kwargs = {}
-            if idf_path:
-                kwargs["idf_path"] = idf_path
-            if epw_path:
-                kwargs["epw_path"] = epw_path
-            self.simulator = EnergyPlusRunner(**kwargs)
-            self.simulator.start()
-            logger.info("SentinelAI running with REAL EnergyPlus simulation.")
-        else:
-            raise NotImplementedError("The mock physics engine has been removed. You must use use_energyplus=True.")
+        kwargs = {}
+
+        # Step 0: Apply pre-run configuration (city, occupants, start date)
+        configure_idf()
+
+        config_path = os.path.join(os.path.dirname(__file__), "..", "run_config.json")
+        base_idf_name = "small_office.idf"
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+                base_idf_name = cfg.get("base_idf_name", "small_office.idf")
+                if "epw_path" in cfg and cfg["epw_path"]:
+                    abs_epw = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", cfg["epw_path"]))
+                    kwargs["epw_path"] = abs_epw
+
+        configured_idf_name = base_idf_name.replace(".idf", "_configured.idf")
+        configured_idf = os.path.join(os.path.dirname(__file__), "building", configured_idf_name)
+        kwargs["idf_path"] = configured_idf if os.path.exists(configured_idf) else os.path.join(os.path.dirname(__file__), "building", base_idf_name)
+
+        if idf_path:
+            kwargs["idf_path"] = idf_path
+        if epw_path:
+            kwargs["epw_path"] = epw_path
+
+        self.simulator = EnergyPlusRunner(**kwargs)
+        self.simulator.start()
+        self.using_energyplus_backend = True
+        logger.info("SentinelAI running with REAL EnergyPlus simulation.")
 
         self.controller = ForwardController(self.simulator)
+        
+        # Digital Twin visualization is now rendered in the browser (Canvas in index.html)
 
     def run_step(self) -> Dict[str, Any]:
         """
         Executes a single 1-step autonomous closed-loop cycle.
         """
+        self.control_step += 1
+        loop_timestep = self.control_step
+
         # Step 1: Advance simulation & observe live telemetry
         sim_data = self.simulator.step()
         
         # Step 2: State Manager (Single source of truth & SQLite logging)
         building_state = self.state_manager.update_state(
-            timestep=sim_data["timestep"],
+            timestep=loop_timestep,
             outdoor_temp=sim_data["outdoor_temp"],
             outdoor_humidity=sim_data["outdoor_humidity"],
             zones_data=sim_data["zones"],
             equipment_data=sim_data["equipment"],
+            grid_carbon_intensity=sim_data.get("grid_carbon_intensity", 0.45),
             total_energy_kwh=sim_data["total_energy_kwh"],
             carbon_emissions_kg=sim_data["carbon_emissions_kg"]
         )
@@ -131,8 +162,11 @@ class SentinelAIControlLoop:
             f"Validated: {val_result.is_valid} | Fallback: {val_result.used_fallback}"
         )
 
+        # Step 7: Digital Twin visualization is handled by the browser Canvas
+        # (The browser polls /api/state/latest every 3 seconds and redraws the canvas)
+
         return {
-            "timestep": building_state.timestep,
+            "timestep": loop_timestep,
             "building_state": building_state,
             "health_report": health_report,
             "council_decision": council_decision,
@@ -146,7 +180,7 @@ class SentinelAIControlLoop:
             for i in range(num_steps):
                 results.append(self.run_step())
         finally:
-            if self.use_energyplus and hasattr(self.simulator, 'stop'):
+            if hasattr(self.simulator, 'stop'):
                 self.simulator.stop()
         return results
 
@@ -154,13 +188,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="SentinelAI Autonomous Building Control Loop")
     parser.add_argument("--steps", type=int, default=10, help="Number of control steps to run")
-    parser.add_argument("--energyplus", action="store_true", help="Use real EnergyPlus simulation")
     parser.add_argument("--idf", type=str, default=None, help="Path to .idf building model")
     parser.add_argument("--epw", type=str, default=None, help="Path to .epw weather file")
     args = parser.parse_args()
 
     loop = SentinelAIControlLoop(
-        use_energyplus=args.energyplus,
         idf_path=args.idf,
         epw_path=args.epw,
     )

@@ -16,9 +16,12 @@ let isPlaying = false;
 let playTimer = null;
 let currentStep = 1;
 let tourStep = 1;
+let digitalTwin = null;  // Canvas-based Digital Twin engine
 
 document.addEventListener("DOMContentLoaded", () => {
     initCharts();
+    digitalTwin = new DigitalTwinCanvas("digital-twin-canvas");
+    digitalTwin.drawIdle();
     fetchDashboardData();
     setInterval(() => {
         if (!isPlaying && !isResetting) fetchDashboardData();
@@ -31,10 +34,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Tour listeners
     document.getElementById("btn-start-tour").addEventListener("click", startTour);
+    document.getElementById("btn-config-modal").addEventListener("click", showConfigModal);
+    document.getElementById("btn-save-config").addEventListener("click", saveConfig);
     document.getElementById("tour-next").addEventListener("click", nextTourStep);
     document.getElementById("tour-prev").addEventListener("click", prevTourStep);
     document.getElementById("tour-close").addEventListener("click", endTour);
 });
+
+function showConfigModal() {
+    document.getElementById("config-overlay").classList.remove("hidden");
+}
+
+async function saveConfig() {
+    const month = parseInt(document.getElementById("config-month").value, 10);
+    const occupants = parseInt(document.getElementById("config-occ").value, 10);
+    const day_of_week = document.getElementById("config-day").value;
+    
+    document.getElementById("btn-save-config").textContent = "Saving...";
+    document.getElementById("btn-save-config").disabled = true;
+    
+    try {
+        await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ month, occupants, day_of_week })
+        });
+        
+        // Reset local UI state
+        if (digitalTwin) digitalTwin.drawIdle();
+        clearAllDashboardUI();
+        currentStep = 1;
+        isPlaying = false;
+        
+        // Hide modal
+        document.getElementById("config-overlay").classList.add("hidden");
+    } catch (err) {
+        console.error("Config save error:", err);
+    } finally {
+        document.getElementById("btn-save-config").textContent = "Save & Reset";
+        document.getElementById("btn-save-config").disabled = false;
+    }
+}
 
 let isStepInProgress = false;
 
@@ -69,8 +109,8 @@ function clearAllDashboardUI() {
     document.getElementById("metric-energy").innerHTML = `0.000 <span class="unit">kWh</span>`;
     document.getElementById("metric-power").textContent = `Cumulative Day Total | Demand: 0.00 kW (15-min rate) | 0.00 kg CO₂`;
     document.getElementById("metric-pmv").innerHTML = `0.00 <span class="badge badge-success">NEUTRAL / IDEAL</span>`;
-    document.getElementById("metric-health").innerHTML = `98.0% <span class="badge badge-success">HEALTHY</span>`;
-    document.getElementById("metric-health-detail").textContent = "AHU: 98% | Chiller: 92% | Pump: 78% | Fan: 95%";
+    document.getElementById("metric-health").innerHTML = `100.0% <span class="badge badge-success">HEALTHY</span>`;
+    document.getElementById("metric-health-detail").textContent = "AHU: 100% | Chiller: 100% | Pump: 100% | Fan: 100%";
     document.getElementById("metric-savings").innerHTML = `+0.00 <span class="unit">PMV Delta</span>`;
     document.getElementById("metric-savings-detail").textContent = "PMV = Predicted Mean Vote (Fanger Index, -3 Cold to +3 Hot) | Base: 0.00 | AI: 0.00";
 
@@ -113,10 +153,11 @@ function clearAllDashboardUI() {
             </div>`;
     }
 
-    // 7. Clear Telemetry Proof Charts
-    Plotly.react("chart-temp-pmv", [], { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#94a3b8' } }, { responsive: true, displayModeBar: false });
-    Plotly.react("chart-energy-carbon", [], { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#94a3b8' } }, { responsive: true, displayModeBar: false });
-    Plotly.react("chart-airflows", [], { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#94a3b8' } }, { responsive: true, displayModeBar: false });
+    // 7. Clear Telemetry Proof Charts (use correct IDs that exist in index.html)
+    const chartZoneTemps = document.getElementById("chart-zone-temps");
+    const chartEnergyComp = document.getElementById("chart-energy-comp");
+    if (chartZoneTemps) Plotly.react("chart-zone-temps", [], { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#94a3b8' } }, { responsive: true, displayModeBar: false });
+    if (chartEnergyComp) Plotly.react("chart-energy-comp", [], { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#94a3b8' } }, { responsive: true, displayModeBar: false });
 
     // 8. Clear Health Diagnostics
     const healthTbody = document.getElementById("health-table-body");
@@ -331,13 +372,13 @@ async function fetchDashboardData() {
             updateValidatorFeed(logs);
             updateHealthTable(health);
             updateCharts(history, comp);
-            
-            // Phase 6: Digital Twin update
-            if (window.updateDigitalTwin) {
-                window.updateDigitalTwin(state, health);
-            }
+
+            // Render Digital Twin Canvas
+            if (digitalTwin) digitalTwin.render(state, health, council);
+
         } else {
             clearAllDashboardUI();
+            if (digitalTwin) digitalTwin.drawIdle();
         }
     } catch (err) {
         console.warn("Dashboard sync error:", err);
@@ -783,7 +824,7 @@ const TOUR_STEPS = [
     },
     {
         title: "Empirical Baseline Benchmark",
-        body: "Compare SentinelAI side-by-side against an un-controlled Baseline building operating under identical Chicago weather conditions.",
+        body: "Compare SentinelAI side-by-side against an un-controlled Baseline building operating under identical local weather conditions.",
         section: "section-dual-comp"
     },
     {
@@ -837,4 +878,450 @@ function prevTourStep() {
 
 function endTour() {
     document.getElementById("tour-overlay").classList.add("hidden");
+}
+
+// =============================================================================
+// DIGITAL TWIN CANVAS ENGINE
+// Replaces Pygame — renders the building floorplan directly in the browser.
+// =============================================================================
+class DigitalTwinCanvas {
+    constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext("2d");
+        this.W = this.canvas.width;   // 1100
+        this.H = this.canvas.height;  // 420
+
+        // Room layout definitions (x, y, w, h)
+        this.rooms = {
+            "Office":         { x: 20,  y: 20, w: 340, h: 380, label: "Office (West Zone)" },
+            "ConferenceRoom": { x: 380, y: 20, w: 340, h: 380, label: "Conference Room (East Zone)" },
+            "Lobby":          { x: 740, y: 20, w: 160, h: 380, label: "Lobby (North Zone)" },
+        };
+
+        // Toast state
+        this._toastMsg = "";
+        this._toastAlpha = 0;
+        this._toastState = "idle";
+        this._toastStart = 0;
+        this._lastCouncilTs = 0;
+        this._pulsePhase = 0;
+    }
+
+    // Modern glassmorphism PMV colors
+    pmvColor(pmv, ctx, x, y, w, h) {
+        let colors = [];
+        if (pmv < -1.0) colors = ["#3b82f6", "#1d4ed8"];       // Cold (Blue)
+        else if (pmv < -0.5) colors = ["#60a5fa", "#2563eb"];  // Cool (Light Blue)
+        else if (pmv <= 0.5)  colors = ["#10b981", "#047857"]; // OK (Emerald)
+        else if (pmv <= 1.0)  colors = ["#f59e0b", "#b45309"]; // Warm (Amber)
+        else colors = ["#ef4444", "#b91c1c"];                  // Hot (Red)
+
+        const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+        grad.addColorStop(0, colors[0] + "80"); // 50% opacity
+        grad.addColorStop(1, colors[1] + "50"); // 30% opacity
+        return grad;
+    }
+
+    healthColor(h) {
+        if (h >= 90) return "#10b981";
+        if (h >= 70) return "#f59e0b";
+        return "#ef4444";
+    }
+
+    // Draw the idle / waiting state
+    drawIdle() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.W, this.H);
+        
+        // Background
+        ctx.fillStyle = "#090d16";
+        ctx.fillRect(0, 0, this.W, this.H);
+        
+        // Grid pattern overlay
+        ctx.strokeStyle = "rgba(51, 65, 85, 0.15)";
+        ctx.lineWidth = 1;
+        for(let i=0; i<this.W; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,this.H); ctx.stroke(); }
+        for(let j=0; j<this.H; j+=40) { ctx.beginPath(); ctx.moveTo(0,j); ctx.lineTo(this.W,j); ctx.stroke(); }
+
+        // Draw room outlines
+        Object.values(this.rooms).forEach(r => {
+            // Glass panel background
+            ctx.fillStyle = "rgba(17, 24, 39, 0.6)";
+            ctx.beginPath();
+            this._roundRect(ctx, r.x, r.y, r.w, r.h, 12);
+            ctx.fill();
+
+            // Glowing border
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.2)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = "#64748b";
+            ctx.font = "600 15px Outfit, sans-serif";
+            ctx.fillText(r.label, r.x + 20, r.y + 35);
+        });
+
+        // Center pulse text
+        this._pulsePhase += 0.05;
+        const alpha = 0.5 + 0.5 * Math.sin(this._pulsePhase);
+        ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
+        ctx.font = "600 18px Outfit, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Ready to Initialize EnergyPlus Simulation", this.W / 2, this.H / 2 - 10);
+        ctx.fillStyle = "#64748b";
+        ctx.font = "400 14px Inter, sans-serif";
+        ctx.fillText("Click ▶ Execute Step or ▶ Play Day on the dashboard toolbar", this.W / 2, this.H / 2 + 15);
+        ctx.textAlign = "left";
+
+        requestAnimationFrame(() => {
+            if (this._toastState === "idle" && (!currentStep || currentStep === 1)) {
+                this.drawIdle();
+            }
+        });
+    }
+
+    // Full render with live data
+    render(state, health, council) {
+        this._pulsePhase += 0.05;
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.W, this.H);
+        
+        // Background & Grid
+        ctx.fillStyle = "#090d16";
+        ctx.fillRect(0, 0, this.W, this.H);
+        ctx.strokeStyle = "rgba(51, 65, 85, 0.15)";
+        ctx.lineWidth = 1;
+        for(let i=0; i<this.W; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,this.H); ctx.stroke(); }
+        for(let j=0; j<this.H; j+=40) { ctx.beginPath(); ctx.moveTo(0,j); ctx.lineTo(this.W,j); ctx.stroke(); }
+
+        const zones = state.zones || {};
+
+        // Draw each room
+        Object.entries(this.rooms).forEach(([zoneId, r]) => {
+            const z = zones[zoneId];
+            const pmv = z ? (z.pmv || 0) : 0;
+            const temp = z ? (z.temperature || 0) : 0;
+            const setpoint = z ? (z.target_setpoint || 0) : 0;
+            const occ = z ? (z.occupancy || 0) : 0;
+            const co2 = z ? (z.co2 || 0) : 0;
+            const humidity = z ? (z.humidity || 0) : 0;
+
+            // Base glass panel
+            ctx.fillStyle = "rgba(17, 24, 39, 0.7)";
+            ctx.beginPath();
+            this._roundRect(ctx, r.x, r.y, r.w, r.h, 12);
+            ctx.fill();
+
+            // PMV Gradient Overlay
+            ctx.fillStyle = this.pmvColor(pmv, ctx, r.x, r.y, r.w, r.h);
+            ctx.fill();
+
+            // Neon Border
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Room label
+            ctx.fillStyle = "#f8fafc";
+            ctx.font = "600 16px Outfit, sans-serif";
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 4;
+            ctx.fillText(r.label, r.x + 20, r.y + 35);
+            ctx.shadowBlur = 0; // reset
+
+            // Metrics Box
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.beginPath();
+            this._roundRect(ctx, r.x + 20, r.y + 55, r.w - 40, 90, 8);
+            ctx.fill();
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "400 13px Inter, sans-serif";
+            
+            // Highlight setpoint differently if it changed
+            ctx.fillText("Temp:", r.x + 35, r.y + 78);
+            ctx.font = "600 13px Inter, sans-serif";
+            ctx.fillStyle = "#38bdf8";
+            ctx.fillText(`${temp.toFixed(1)}°C`, r.x + 78, r.y + 78);
+            
+            ctx.font = "400 13px Inter, sans-serif";
+            ctx.fillStyle = "#94a3b8";
+            ctx.fillText(`(Set: ${setpoint.toFixed(1)}°C)`, r.x + 135, r.y + 78);
+
+            // PMV display
+            ctx.fillStyle = "#e2e8f0";
+            ctx.fillText(`PMV:`, r.x + 35, r.y + 100);
+            ctx.font = "600 13px Inter, sans-serif";
+            ctx.fillStyle = (Math.abs(pmv) <= 0.5) ? "#10b981" : "#f59e0b";
+            ctx.fillText(`${pmv.toFixed(2)}`, r.x + 75, r.y + 100);
+
+            // IAQ
+            ctx.font = "400 12px Inter, sans-serif";
+            ctx.fillStyle = "#cbd5e1";
+            ctx.fillText(`RH: ${humidity.toFixed(1)}%   |   CO₂: ${co2.toFixed(0)} ppm`, r.x + 35, r.y + 125);
+
+            // Draw occupant dots (animated pulsing)
+            const dotCount = Math.min(occ, 20);
+            const cols = Math.min(5, r.w > 200 ? 5 : 3);
+            const pulse = 1 + 0.3 * Math.sin(this._pulsePhase * 3);
+
+            for (let i = 0; i < dotCount; i++) {
+                const row = Math.floor(i / cols);
+                const col = i % cols;
+                const cx = r.x + r.w - 30 - col * 22;
+                const cy = r.y + r.h - 35 - row * 22;
+                
+                // Glow
+                ctx.beginPath();
+                ctx.arc(cx, cy, 5 * pulse, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(56, 189, 248, 0.4)";
+                ctx.fill();
+
+                // Core
+                ctx.beginPath();
+                ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = "#38bdf8";
+                ctx.fill();
+            }
+            if (occ > 20) {
+                ctx.fillStyle = "#f8fafc";
+                ctx.font = "600 12px Inter, sans-serif";
+                ctx.fillText(`+${occ - 20} more`, r.x + r.w - 70 - cols * 20, r.y + r.h - 30);
+            }
+            
+            // Total occupancy label
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "400 12px Inter, sans-serif";
+            ctx.fillText(`Occupants: ${occ}`, r.x + 20, r.y + r.h - 20);
+        });
+
+        // ── Right sidebar: Weather + Equipment Health + PMV Legend ──
+        const sx = 920;
+        let sy = 35;
+
+        // Weather
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "600 15px Outfit, sans-serif";
+        ctx.fillText("Environment", sx, sy);
+        
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.fillRect(sx, sy+8, 160, 1);
+        sy += 25;
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "400 12px Inter, sans-serif";
+        const outTemp = state.outdoor_temp !== undefined ? state.outdoor_temp.toFixed(1) : "--";
+        const outHum = state.outdoor_humidity !== undefined ? state.outdoor_humidity.toFixed(1) : "--";
+        
+        ctx.fillText(`Ambient Temp:`, sx, sy);
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillText(`${outTemp}°C`, sx + 100, sy);
+        sy += 20;
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(`Humidity:`, sx, sy);
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillText(`${outHum}%`, sx + 100, sy);
+        sy += 20;
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(`Time Step:`, sx, sy);
+        ctx.fillStyle = "#38bdf8";
+        ctx.fillText(`${state.timestep || 0}`, sx + 100, sy);
+        sy += 40;
+
+        // Equipment Health Boxes
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "600 15px Outfit, sans-serif";
+        ctx.fillText("Hardware Health", sx, sy);
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.fillRect(sx, sy+8, 160, 1);
+        sy += 25;
+
+        const eqItems = [
+            { name: "AHU",     score: health?.assets?.AHU?.health_score ?? 98 },
+            { name: "Chiller", score: health?.assets?.CHILLER?.health_score ?? 92 },
+            { name: "Pump",    score: health?.assets?.PUMP?.health_score ?? 78 },
+            { name: "Fan",     score: health?.assets?.FAN?.health_score ?? 95 },
+        ];
+        eqItems.forEach((eq, i) => {
+            const bx = sx + (i % 2) * 85;
+            const by = sy + Math.floor(i / 2) * 55;
+            
+            // Glass Box
+            ctx.fillStyle = "rgba(30,41,59,0.7)";
+            ctx.beginPath();
+            this._roundRect(ctx, bx, by, 75, 46, 8);
+            ctx.fill();
+            
+            ctx.strokeStyle = "rgba(255,255,255,0.05)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Glow Dot
+            const eqColor = this.healthColor(eq.score);
+            ctx.beginPath();
+            ctx.arc(bx + 15, by + 16, 4, 0, Math.PI * 2);
+            ctx.fillStyle = eqColor;
+            ctx.fill();
+            ctx.shadowColor = eqColor;
+            ctx.shadowBlur = 6;
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset
+
+            // Label
+            ctx.fillStyle = "#cbd5e1";
+            ctx.font = "400 12px Inter, sans-serif";
+            ctx.fillText(eq.name, bx + 26, by + 20);
+            
+            // Score
+            ctx.fillStyle = eqColor;
+            ctx.font = "600 13px Inter, sans-serif";
+            ctx.fillText(`${eq.score.toFixed(0)}%`, bx + 15, by + 38);
+        });
+        sy += 120;
+
+        // PMV Legend
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "600 15px Outfit, sans-serif";
+        ctx.fillText("PMV Index", sx, sy);
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.fillRect(sx, sy+8, 160, 1);
+        sy += 25;
+
+        const legends = [
+            { label: "< -1.0 Cold",      colors: ["#3b82f6", "#1d4ed8"] },
+            { label: "-1.0 to -0.5 Cool", colors: ["#60a5fa", "#2563eb"] },
+            { label: "-0.5 to 0.5 Ideal", colors: ["#10b981", "#047857"] },
+            { label: "0.5 to 1.0 Warm",   colors: ["#f59e0b", "#b45309"] },
+            { label: "> 1.0 Hot",         colors: ["#ef4444", "#b91c1c"] },
+        ];
+        legends.forEach((l, i) => {
+            const ly = sy + i * 24;
+            
+            // Gradient square
+            const grad = ctx.createLinearGradient(sx, ly, sx + 18, ly + 18);
+            grad.addColorStop(0, l.colors[0]);
+            grad.addColorStop(1, l.colors[1]);
+            ctx.fillStyle = grad;
+            
+            ctx.beginPath();
+            this._roundRect(ctx, sx, ly, 18, 18, 4);
+            ctx.fill();
+            
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "400 12px Inter, sans-serif";
+            ctx.fillText(l.label, sx + 28, ly + 14);
+        });
+
+        // Toast notification (AI reasoning)
+        this._updateToast(council);
+        this._drawToast();
+        
+        // Loop animation if playing
+        if (isPlaying) {
+            requestAnimationFrame(() => this.render(state, health, council));
+        }
+    }
+
+    _updateToast(council) {
+        if (!council) return;
+        const ts = council.timestep || 0;
+        if (ts !== this._lastCouncilTs && council.comfort_reasoning) {
+            this._lastCouncilTs = ts;
+            this._toastMsg = council.comfort_reasoning.split(".")[0] + ".";
+            this._toastAlpha = 1.0;
+            this._toastState = "show";
+            this._toastStart = Date.now();
+        }
+        if (this._toastState === "show" && Date.now() - this._toastStart > 4000) {
+            this._toastState = "fade";
+        }
+        if (this._toastState === "fade") {
+            this._toastAlpha = Math.max(0, this._toastAlpha - 0.05);
+            if (this._toastAlpha <= 0) this._toastState = "idle";
+        }
+    }
+
+    _drawToast() {
+        if (this._toastState === "idle" || !this._toastMsg) return;
+        const ctx = this.ctx;
+        const tw = 360, th = 68;
+        const tx = this.W - tw - 20;
+        
+        // Slide up animation
+        let slideOffset = 0;
+        if (this._toastState === "show") {
+            const elapsed = Date.now() - this._toastStart;
+            if (elapsed < 300) {
+                slideOffset = 20 * (1 - (elapsed/300));
+            }
+        }
+        const ty = this.H - th - 20 + slideOffset;
+
+        ctx.save();
+        ctx.globalAlpha = this._toastAlpha;
+        
+        // Shadow
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 4;
+        
+        // Box
+        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+        ctx.beginPath();
+        this._roundRect(ctx, tx, ty, tw, th, 12);
+        ctx.fill();
+        
+        ctx.shadowBlur = 0; // reset
+        
+        // Animated gradient border
+        const t = Date.now() / 1000;
+        const grad = ctx.createLinearGradient(tx, ty, tx + tw, ty + th);
+        grad.addColorStop(0, `rgba(56, 189, 248, ${0.5 + 0.5 * Math.sin(t)})`);
+        grad.addColorStop(1, `rgba(16, 185, 129, ${0.5 + 0.5 * Math.cos(t)})`);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "600 13px Outfit, sans-serif";
+        ctx.fillText("✨ AI Reasoning Update", tx + 15, ty + 22);
+
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = "400 12px Inter, sans-serif";
+        
+        // Word wrap message
+        const words = this._toastMsg.split(" ");
+        let line = "";
+        let y = ty + 42;
+        for(let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + " ";
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > tw - 30 && n > 0) {
+                ctx.fillText(line, tx + 15, y);
+                line = words[n] + " ";
+                y += 16;
+            } else {
+                line = testLine;
+            }
+            if (y > ty + 50) { line += "..."; break; } // Truncate to 2 lines
+        }
+        ctx.fillText(line, tx + 15, y);
+        
+        ctx.restore();
+    }
+
+    _roundRect(ctx, x, y, w, h, r) {
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+    }
 }

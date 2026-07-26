@@ -61,3 +61,6 @@ class OverallBuildingHealthReport:
     assets: Dict[str, AssetHealthReport] = field(default_factory=dict)
     building_anomalies: List[AnomalyDetectionResult] = field(default_factory=list)
     active_alerts: List[PredictiveMaintenanceAlert] = field(default_factory=list)
+    total_power_kw: float = 0.0
+    cumulative_runtime_hours: float = 0.0
+    cycling_count: int = 0

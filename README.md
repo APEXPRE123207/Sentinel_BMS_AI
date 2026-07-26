@@ -70,7 +70,7 @@ python -m backend.api.main
 python -m backend.building.dual_runner --steps 10
 ```
 
-### 3. Run Test Suite (41 Automated Tests)
+### 3. Run Test Suite
 ```bash
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
@@ -116,8 +116,7 @@ Sentinel_BMS_AI/
 │   ├── dashboard/
 │   │   ├── index.html            # BMS Web Control Dashboard
 │   │   └── static/
-│   │       ├── app.js            # Dashboard logic & Plotly.js charts
-│   │       ├── digital_twin.js   # Interactive Digital Twin (SVG + Three.js)
+│   │       ├── app.js            # Dashboard logic, Plotly.js charts, and embedded digital twin renderer
 │   │       └── styles.css        # Premium dark design system
 │   └── run_loop.py               # Autonomous closed-loop orchestrator
 ├── tests/
