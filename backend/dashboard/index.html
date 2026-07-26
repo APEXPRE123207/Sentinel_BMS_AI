@@ -173,7 +173,12 @@
                         <h4>🏛️ Baseline Building (Static Schedules)</h4>
                         <div class="dual-stat">Energy Consumption: <span id="dual-base-energy" class="text-amber">4.109 kWh</span></div>
                         <div class="dual-stat">Occupant Comfort (PMV): <span id="dual-base-pmv" class="text-red">-2.55 (Cold Discomfort)</span></div>
-                        <div class="dual-sub">Static thermostat schedules (constant 22°C cooling / 20°C heating) fail to adapt to dynamic occupancy loads, causing extreme PMV drift and discomfort.</div>
+                        <div class="dual-sub" style="font-family: monospace; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; margin-top: 8px;">
+                            # Static Thermostat Rule<br>
+                            cooling_setpoint = 22.0<br>
+                            heating_setpoint = 20.0<br>
+                            airflow = 0.5 # Constant Volume<br>
+                        </div>
                     </div>
                     <div class="dual-vs">VS</div>
                     <div class="dual-box dual-ai">
@@ -186,8 +191,7 @@
                         <h4>🏆 Empirical Improvement</h4>
                         <div class="dual-stat">Comfort Improvement: <span id="dual-delta-comfort" class="text-emerald">+1.44 PMV Delta</span></div>
                         <div class="dual-stat">Energy Saved: <span id="dual-delta-energy" class="text-emerald">0.0% Saved</span></div>
-                        <div class="dual-sub">Click <strong>⚡ Run Dual Step</strong> to execute 1 side-by-side comparison step!</div>
-                    </div>
+                        </div>
                 </div>
             </section>
 

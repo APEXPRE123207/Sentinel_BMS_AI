@@ -278,12 +278,30 @@ def get_latest_comparison():
             if not ai_row:
                 return default_result
                 
-            from backend.database.models import BuildingState
-            ai_state = BuildingState.from_dict(dict(ai_row))
+            ai_d = dict(ai_row)
+            b_d = db_manager.get_latest_baseline_metrics(ai_d["timestep"]) or {}
+
+            baseline_pmv = b_d.get("avg_pmv", ai_d.get("avg_pmv", 0.0))
+            ai_pmv = ai_d.get("avg_pmv", 0.0)
             
-            from backend.analytics.comparator import BaselineComparator
-            comp = BaselineComparator(db_manager)
-            return comp.evaluate_timestep(ai_state)
+            b_energy = b_d.get("total_energy_kwh", ai_d.get("total_energy_kwh", 0.0))
+            ai_energy = ai_d.get("total_energy_kwh", 0.0)
+
+            return {
+                "timestep": ai_d["timestep"],
+                "baseline": {
+                    "energy_kwh": round(b_energy, 3),
+                    "avg_pmv": round(baseline_pmv, 2),
+                },
+                "sentinel_ai": {
+                    "energy_kwh": round(ai_energy, 3),
+                    "avg_pmv": round(ai_pmv, 2),
+                },
+                "comparison": {
+                    "energy_saved_pct": ai_d.get("energy_saved_pct", 0.0),
+                    "comfort_improvement": round(abs(baseline_pmv) - abs(ai_pmv), 3),
+                }
+            }
     except Exception as e:
         logger.warning(f"Comparison query failed: {e}")
         return default_result
