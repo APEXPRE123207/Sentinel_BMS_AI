@@ -87,6 +87,18 @@ SentinelAI features native support for MCP tool calling:
 
 ---
 
+## 📦 Submission Deliverables
+
+The final submission materials can be found in the `deliverables/` folder, which includes:
+- 🏗️ **System Architecture Document**: [`ARCHITECTURE.md`](deliverables/ARCHITECTURE.md) detailing the MCP Tool Architecture, Prompt Strategies, and Context Compression.
+- 🏢 **Building Models (.idf files)**:
+  - `baseline_configured.idf` - Un-controlled static baseline building
+  - `small_office_configured.idf` - SentinelAI dynamically controlled building
+- 🎥 **PoC Demonstration Video**: (Pending upload)
+- 📊 **Presentation Slides (PPT)**: (Pending upload)
+
+---
+
 ## 📁 Repository Structure
 
 ```
