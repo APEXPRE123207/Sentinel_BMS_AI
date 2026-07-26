@@ -58,25 +58,31 @@ class AgentCouncil:
         if dotenv and os.path.exists(env_path):
             dotenv.load_dotenv(env_path)
             
-            ollama_key = os.environ.get("OLLAMA_API_KEY")
-            if ollama_key:
-                self.api_url = "https://ollama.com/api/chat"
-                self.api_key = ollama_key
-                self.model_name = "minimax-m3"
-                self.is_ollama_cloud = True
-                logger.info("AgentCouncil initialized with Ollama Cloud API Key from .env")
+            local_model = os.environ.get("LOCAL_OLLAMA_MODEL")
+            if local_model:
+                self.api_url = "http://localhost:11434/v1/chat/completions"
+                self.model_name = local_model
+                logger.info(f"AgentCouncil initialized with LOCAL Ollama Model: {local_model}")
             else:
-                env_key = os.environ.get("LLM_API_KEY")
-                if env_key:
-                    if env_key == "0":
-                        self.api_url = "http://localhost:11434/v1/chat/completions"
-                        self.model_name = "minimax-m3"
-                        logger.info("AgentCouncil detected LLM_API_KEY=0. Routing to local Ollama.")
-                    else:
-                        self.api_key = env_key
-                        if not self.api_url:
-                            self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-                        logger.info("AgentCouncil initialized with Cloud API Key from .env")
+                ollama_key = os.environ.get("OLLAMA_API_KEY")
+                if ollama_key:
+                    self.api_url = "https://ollama.com/api/chat"
+                    self.api_key = ollama_key
+                    self.model_name = "minimax-m3"
+                    self.is_ollama_cloud = True
+                    logger.info("AgentCouncil initialized with Ollama Cloud API Key from .env")
+                else:
+                    env_key = os.environ.get("LLM_API_KEY")
+                    if env_key:
+                        if env_key == "0":
+                            self.api_url = "http://localhost:11434/v1/chat/completions"
+                            self.model_name = "minimax-m3"
+                            logger.info("AgentCouncil detected LLM_API_KEY=0. Routing to local Ollama.")
+                        else:
+                            self.api_key = env_key
+                            if not self.api_url:
+                                self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+                            logger.info("AgentCouncil initialized with Cloud API Key from .env")
 
     def evaluate(
         self,
