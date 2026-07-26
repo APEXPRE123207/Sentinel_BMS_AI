@@ -1,0 +1,13 @@
+{
+    "simulation_start_date": {
+        "month": 7,
+        "day": 7
+    },
+    "day_of_week": "Tuesday",
+    "occupant_counts": {
+        "Office": 8,
+        "ConferenceRoom": 16,
+        "Lobby": 4
+    },
+    "epw_path": "backend/building/Chennai.epw"
+}

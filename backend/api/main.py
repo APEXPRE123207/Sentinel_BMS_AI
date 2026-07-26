@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..database.db import DatabaseManager
 from ..run_loop import SentinelAIControlLoop
-from ..building.dual_runner import DualSimulationRunner
+from ..building.dual_runner import DualSimulationRunner, get_dynamic_config
 from ..health_engine.models import EquipmentType
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -75,6 +75,8 @@ def update_config(config: ConfigUpdate):
     current_cfg["occupant_counts"]["Office"] = config.occupants
     current_cfg["occupant_counts"]["ConferenceRoom"] = config.occupants * 2
     current_cfg["occupant_counts"]["Lobby"] = max(2, int(config.occupants / 4))
+    
+    current_cfg["epw_path"] = "backend/building/Chennai.epw"
     
     with open(config_path, "w") as f:
         json.dump(current_cfg, f, indent=4)
@@ -311,9 +313,11 @@ def trigger_step():
     global control_loop, baseline_runner
     if not baseline_runner:
         from backend.building.baseline_runner import BaselineSimulationRunner
-        baseline_runner = BaselineSimulationRunner(db_manager=db_manager, use_energyplus=True)
+        idf_path, epw_path = get_dynamic_config()
+        baseline_runner = BaselineSimulationRunner(db_manager=db_manager, use_energyplus=True, idf_path=idf_path, epw_path=epw_path)
     if not control_loop:
-        control_loop = SentinelAIControlLoop(db_path=db_manager.db_path, use_energyplus=True)
+        idf_path, epw_path = get_dynamic_config()
+        control_loop = SentinelAIControlLoop(db_path=db_manager.db_path, use_energyplus=True, idf_path=idf_path, epw_path=epw_path)
     
     baseline_runner.run_step()
     result = control_loop.run_step()
@@ -326,14 +330,26 @@ def trigger_step():
 
 @app.post("/api/control/dual_step")
 def trigger_dual_step():
-    """Triggers 1 side-by-side Dual Simulation comparison step."""
-    global dual_runner
-    if not dual_runner:
-        dual_runner = DualSimulationRunner(db_path=db_manager.db_path, use_energyplus=True)
-    res = dual_runner.run_dual_simulation(num_steps=1)
+    """Triggers 1 side-by-side Dual Simulation comparison step using persistent state."""
+    global control_loop, baseline_runner
+    if not baseline_runner:
+        from backend.building.baseline_runner import BaselineSimulationRunner
+        idf_path, epw_path = get_dynamic_config()
+        baseline_runner = BaselineSimulationRunner(db_manager=db_manager, use_energyplus=True, idf_path=idf_path, epw_path=epw_path)
+    if not control_loop:
+        idf_path, epw_path = get_dynamic_config()
+        control_loop = SentinelAIControlLoop(db_path=db_manager.db_path, use_energyplus=True, idf_path=idf_path, epw_path=epw_path)
+        
+    baseline_runner.run_step()
+    ai_res = control_loop.run_step()
+    
+    from backend.analytics.comparator import BaselineComparator
+    comp = BaselineComparator(db_manager)
+    comp_res = comp.evaluate_timestep(ai_res["building_state"])
+    
     return {
         "status": "SUCCESS",
-        "comparison": res[0] if res else {}
+        "comparison": comp_res
     }
 
 @app.post("/api/health/regen")

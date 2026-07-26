@@ -16,10 +16,27 @@ from .baseline_runner import BaselineSimulationRunner
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DualSimulation")
 
+import json
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_BASELINE_IDF = os.path.join(_HERE, "baseline.idf")
-_SENTINEL_IDF = os.path.join(_HERE, "sentinel.idf")
-_WEATHER_EPW = os.path.join(_HERE, "weather.epw")
+
+def get_dynamic_config():
+    config_path = os.path.join(_HERE, "..", "..", "run_config.json")
+    base_idf = "small_office.idf"
+    epw_path = "weather.epw"
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            cfg = json.load(f)
+            base_idf = cfg.get("base_idf_name", "small_office.idf")
+            if "epw_path" in cfg and cfg["epw_path"]:
+                epw_path = cfg["epw_path"]
+    
+    # Use configured IDF (with sizing periods disabled) if it exists, otherwise base IDF
+    configured_idf = base_idf.replace(".idf", "_configured.idf")
+    idf_to_use = configured_idf if os.path.exists(os.path.join(_HERE, configured_idf)) else base_idf
+    
+    return os.path.join(_HERE, idf_to_use), os.path.join(_HERE, "..", "..", epw_path)
+
 
 class DualSimulationRunner:
     def __init__(
@@ -40,11 +57,13 @@ class DualSimulationRunner:
         Executes Phase 2: SentinelAI EnergyPlus simulation (evaluating against BaselineMetrics).
         Returns list of comparative step reports.
         """
-        logger.info("=== STEP 1: Running Baseline EnergyPlus Simulation ===")
+        idf_path, epw_path = get_dynamic_config()
+        
+        logger.info(f"=== STEP 1: Running Baseline EnergyPlus Simulation using {idf_path} ===")
         baseline_runner = BaselineSimulationRunner(
             db_manager=self.db_manager,
-            idf_path=_BASELINE_IDF,
-            epw_path=_WEATHER_EPW,
+            idf_path=idf_path,
+            epw_path=epw_path,
         )
 
         try:
@@ -58,8 +77,8 @@ class DualSimulationRunner:
         ai_loop = SentinelAIControlLoop(
             db_path=self.db_path,
             llm_api_url=self.llm_api_url,
-            idf_path=_SENTINEL_IDF,
-            epw_path=_WEATHER_EPW
+            idf_path=idf_path,
+            epw_path=epw_path
         )
 
         results = []

@@ -1,0 +1,7 @@
+1. remove the dual step button if the dual step is being calculated on every execute step.
+2. empirical improvement math is wrong (-2.55 and 0 doesnt give +1.44)
+3. show why the comfort will be so low in the baseline building for which deterministic value, do the same for sentinelai also, why it will be more comfortable.
+4. All the assets will always be in full health? even in the baseline building?
+5. Once again asking you implemented the maths for the changing of fan settings and all.
+6. increase the the live simulation window horizontally as half of the stuff is being getting cut
+7. in step log its showing 4,8 occupants but total occupants 4+8+1... fix that also

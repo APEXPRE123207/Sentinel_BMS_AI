@@ -103,7 +103,7 @@ async function resetDatabase() {
 function clearAllDashboardUI() {
     currentStep = 1;
     // 1. Reset Header
-    document.getElementById("current-step-text").textContent = "00:15 (Step #1)";
+    document.getElementById("current-step-text").textContent = stepToTimeOfDay(1) + " (Step #1)";
     
     // 2. Clear Vital KPIs
     document.getElementById("metric-energy").innerHTML = `0.000 <span class="unit">kWh</span>`;
@@ -176,10 +176,16 @@ function clearAllDashboardUI() {
 let isResetting = false;
 
 function stepToTimeOfDay(step) {
-    const totalMins = Math.max(0, (step - 1) * 15);
+    // Physics engine (runner.py) starts at 6.75 hours (06:45 AM)
+    // 6.75 * 60 = 405 minutes. We offset the UI clock to match the physics clock.
+    const startOffsetMins = 405; 
+    const totalMins = Math.max(0, startOffsetMins + (step - 1) * 15);
     const hrs = Math.floor(totalMins / 60) % 24;
     const mins = totalMins % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    
+    const ampm = hrs >= 12 ? 'PM' : 'AM';
+    const h12 = hrs % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')} ${ampm}`;
 }
 
 async function toggleAutoplay() {
@@ -446,17 +452,17 @@ function updateVitalMetrics(state, comp, health) {
     document.getElementById("metric-health-detail").textContent = healthSub;
 
     // 4. Empirical Savings (Amber)
-    const savingsDelta = (comp && comp.comfort_improvement !== undefined) ? comp.comfort_improvement : 1.44;
-    const basePmv = (comp && comp.baseline_pmv !== undefined) ? comp.baseline_pmv.toFixed(2) : "-2.55";
-    const aiPmv = (comp && comp.ai_pmv !== undefined) ? comp.ai_pmv.toFixed(2) : avgPmv.toFixed(2);
+    const savingsDelta = (comp && comp.comparison && comp.comparison.comfort_improvement !== undefined) ? comp.comparison.comfort_improvement : 1.44;
+    const basePmv = (comp && comp.baseline && comp.baseline.avg_pmv !== undefined) ? comp.baseline.avg_pmv.toFixed(2) : "-2.55";
+    const aiPmv = (comp && comp.sentinel_ai && comp.sentinel_ai.avg_pmv !== undefined) ? comp.sentinel_ai.avg_pmv.toFixed(2) : avgPmv.toFixed(2);
 
     document.getElementById("metric-savings").innerHTML = `+${savingsDelta.toFixed(2)} <span class="unit">PMV Delta</span>`;
     document.getElementById("metric-savings-detail").textContent = `PMV = Predicted Mean Vote (Fanger Index, -3 Cold to +3 Hot) | Base: ${basePmv} | AI: ${aiPmv}`;
 
     // Dual Simulation Panel Sync
-    const bEnergy = (comp && comp.baseline_energy_kwh !== undefined) ? comp.baseline_energy_kwh.toFixed(3) : energy.toFixed(3);
-    const aiEnergy = (comp && comp.ai_energy_kwh !== undefined) ? comp.ai_energy_kwh.toFixed(3) : energy.toFixed(3);
-    const energySavedPct = (comp && comp.energy_saved_pct !== undefined) ? comp.energy_saved_pct.toFixed(1) : "0.0";
+    const bEnergy = (comp && comp.baseline && comp.baseline.energy_kwh !== undefined) ? comp.baseline.energy_kwh.toFixed(3) : energy.toFixed(3);
+    const aiEnergy = (comp && comp.sentinel_ai && comp.sentinel_ai.energy_kwh !== undefined) ? comp.sentinel_ai.energy_kwh.toFixed(3) : energy.toFixed(3);
+    const energySavedPct = (comp && comp.comparison && comp.comparison.energy_saved_pct !== undefined) ? comp.comparison.energy_saved_pct.toFixed(1) : "0.0";
 
     const elBaseEnergy = document.getElementById("dual-base-energy");
     const elAiEnergy = document.getElementById("dual-ai-energy");
@@ -465,10 +471,19 @@ function updateVitalMetrics(state, comp, health) {
     const elDeltaComfort = document.getElementById("dual-delta-comfort");
     const elDeltaEnergy = document.getElementById("dual-delta-energy");
 
+    function getPmvLabel(pmvStr) {
+        const p = parseFloat(pmvStr);
+        if (p > 1.5) return "Hot Discomfort";
+        if (p > 0.5) return "Slightly Warm";
+        if (p < -1.5) return "Cold Discomfort";
+        if (p < -0.5) return "Slightly Cool";
+        return "Neutral / Comfortable";
+    }
+
     if (elBaseEnergy) elBaseEnergy.textContent = `${bEnergy} kWh`;
     if (elAiEnergy) elAiEnergy.textContent = `${aiEnergy} kWh`;
-    if (elBasePmv) elBasePmv.textContent = `${basePmv} (Cold Discomfort)`;
-    if (elAiPmv) elAiPmv.textContent = `${aiPmv} (Comfortable)`;
+    if (elBasePmv) elBasePmv.textContent = `${basePmv} (${getPmvLabel(basePmv)})`;
+    if (elAiPmv) elAiPmv.textContent = `${aiPmv} (${getPmvLabel(aiPmv)})`;
     if (elDeltaComfort) elDeltaComfort.textContent = `+${savingsDelta.toFixed(2)} PMV Delta`;
     if (elDeltaEnergy) elDeltaEnergy.textContent = `${energySavedPct}% Saved`;
 }
@@ -887,15 +902,17 @@ function endTour() {
 class DigitalTwinCanvas {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
+        if (!this.canvas) return;
         this.ctx = this.canvas.getContext("2d");
         this.W = this.canvas.width;   // 1100
         this.H = this.canvas.height;  // 420
+        this._pulsePhase = 0;
 
-        // Room layout definitions (x, y, w, h)
+        // Static layout config
         this.rooms = {
-            "Office":         { x: 20,  y: 20, w: 340, h: 380, label: "Office (West Zone)" },
-            "ConferenceRoom": { x: 380, y: 20, w: 340, h: 380, label: "Conference Room (East Zone)" },
-            "Lobby":          { x: 740, y: 20, w: 160, h: 380, label: "Lobby (North Zone)" },
+            "Office":         { x: 20,  y: 20, w: 450, h: 560, label: "Office (West Zone)" },
+            "ConferenceRoom": { x: 490, y: 20, w: 450, h: 560, label: "Conference Room (East Zone)" },
+            "Lobby":          { x: 960, y: 20, w: 220, h: 560, label: "Lobby (North Zone)" },
         };
 
         // Toast state
@@ -1097,7 +1114,7 @@ class DigitalTwinCanvas {
         });
 
         // ── Right sidebar: Weather + Equipment Health + PMV Legend ──
-        const sx = 920;
+        const sx = 1010; // Shifted right to accommodate wider rooms
         let sy = 35;
 
         // Weather
