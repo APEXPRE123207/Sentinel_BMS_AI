@@ -7,7 +7,7 @@
     "occupant_counts": {
         "Office": 8,
         "ConferenceRoom": 16,
-        "Lobby": 4
+        "Lobby": 2
     },
     "epw_path": "backend/building/Chennai.epw"
 }

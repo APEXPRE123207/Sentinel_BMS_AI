@@ -898,9 +898,9 @@ class DigitalTwinCanvas {
 
         // Static layout config
         this.rooms = {
-            "Office":         { x: 20,  y: 20, w: 450, h: 560, label: "Office (West Zone)" },
-            "ConferenceRoom": { x: 490, y: 20, w: 450, h: 560, label: "Conference Room (East Zone)" },
-            "Lobby":          { x: 960, y: 20, w: 220, h: 560, label: "Lobby (North Zone)" },
+            "Office":         { x: 20,  y: 20, w: 380, h: 560, label: "Office (West Zone)" },
+            "ConferenceRoom": { x: 420, y: 20, w: 380, h: 560, label: "Conference Room (East Zone)" },
+            "Lobby":          { x: 820, y: 20, w: 180, h: 560, label: "Lobby (North Zone)" },
         };
 
         // Toast state
@@ -1102,7 +1102,7 @@ class DigitalTwinCanvas {
         });
 
         // ── Right sidebar: Weather + Equipment Health + PMV Legend ──
-        const sx = 1010; // Shifted right to accommodate wider rooms
+        const sx = 1020; // Shifted right to accommodate wider rooms
         let sy = 35;
 
         // Weather
